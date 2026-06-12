@@ -13,7 +13,18 @@ const http = require('http');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
+
+// Aceita WebSocket no path /socket
+server.on('upgrade', (req, socket, head) => {
+  if (req.url === '/socket' || req.url === '/') {
+    wss.handleUpgrade(req, socket, head, ws => {
+      wss.emit('connection', ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
 app.use(cors());
 app.use(express.json());
