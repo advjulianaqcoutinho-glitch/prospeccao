@@ -98,6 +98,26 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
           }
         }
 
+        // ── Deduplication check ──────────────────────────────────────────
+        if (telefoneNorm) {
+          const { data: existing } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('telefone_normalizado', telefoneNorm)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            sendProgress({
+              tipo: 'lead_duplicado',
+              mensagem: `⏭ ${empresa.nome} já existe na base (número duplicado)`,
+              atual: i + 1,
+              total: empresas.length,
+              empresa_nome: empresa.nome,
+            });
+            continue;
+          }
+        }
+
         // ── Generate messages ────────────────────────────────────────────
         let mensagemGerada = null;
         let mensagemVarianteB = null;

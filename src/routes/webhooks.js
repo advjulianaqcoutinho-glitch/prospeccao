@@ -106,6 +106,15 @@ router.post('/evolution', async (req, res) => {
 
         if (ws && typeof ws.broadcast === 'function') {
           ws.broadcast({ tipo: 'resposta', lead_id: lead.id, classificacao: analise.classificacao, kanban_stage: newStage });
+
+          // Suggest blacklist if clearly not interested
+          if (analise.classificacao === 'nao_interessado') {
+            ws.broadcast({
+              tipo: 'sugestao_blacklist',
+              lead_id: lead.id,
+              classificacao: analise.classificacao,
+            });
+          }
         }
       } catch (aiErr) {
         console.error('[webhook] AI analysis error:', aiErr.message);

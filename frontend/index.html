@@ -178,6 +178,12 @@ textarea{resize:vertical;min-height:72px}
 /* SPINNER */
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 
+/* BLACKLIST SUGGESTION */
+.bl-suggestion{position:fixed;bottom:20px;left:240px;z-index:990;background:var(--bg2);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:14px 16px;min-width:300px;animation:slideUp .2s;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.bl-suggestion-title{font-size:13px;font-weight:600;color:var(--red);margin-bottom:6px}
+.bl-suggestion-sub{font-size:12px;color:var(--text-m);margin-bottom:10px}
+.bl-suggestion-actions{display:flex;gap:6px}
+
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideInR{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:translateX(0)}}
@@ -215,7 +221,7 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
     <div class="nav-item" onclick="nav('campanhas',this)"><span class="nav-icon">🎯</span>Campanhas</div>
     <div class="nav-item" onclick="nav('leads',this)"><span class="nav-icon">👥</span>Leads</div>
-    <div class="nav-item" onclick="nav('respostas',this)"><span class="nav-icon">💬</span>Respostas</div>
+    <div class="nav-item" onclick="nav('respostas',this)" id="nav-respostas"><span class="nav-icon">💬</span>Respostas<span id="badge-respostas" style="display:none;margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center">0</span></div>
     <div class="nav-item" onclick="nav('kanban',this)"><span class="nav-icon">📋</span>Kanban</div>
     <div class="nav-item" onclick="nav('analytics',this)"><span class="nav-icon">📈</span>Analytics</div>
     <div class="nav-item" onclick="nav('fila',this)"><span class="nav-icon">⏳</span>Fila de Envios</div>
@@ -365,9 +371,16 @@ textarea{resize:vertical;min-height:72px}
           <button class="btn btn-outline btn-sm" onclick="loadFila()">↻</button>
         </div>
       </div>
+      <!-- Queue summary -->
+      <div id="fila-summary" style="display:none;margin-bottom:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        <div class="stat-card"><div class="stat-label">Pendentes</div><div class="stat-value" id="fq-pending" style="font-size:22px">–</div></div>
+        <div class="stat-card"><div class="stat-label">Enviados hoje</div><div class="stat-value" id="fq-sent" style="font-size:22px">–</div></div>
+        <div class="stat-card"><div class="stat-label">Falhou</div><div class="stat-value" id="fq-failed" style="font-size:22px;color:var(--red)">–</div></div>
+        <div class="stat-card"><div class="stat-label">Próximo envio</div><div class="stat-value" id="fq-next" style="font-size:13px;color:var(--text-m);margin-top:4px">–</div></div>
+      </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div class="table-wrap"><table>
-          <thead><tr><th>Lead</th><th>Campanha</th><th>Agendado para</th><th>Status</th><th>Follow-up</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Lead</th><th>Campanha</th><th>Agendado para</th><th>Status</th><th>Tipo</th><th>Ações</th></tr></thead>
           <tbody id="fila-tbody"></tbody>
         </table></div>
         <div id="fila-empty" class="empty" style="display:none"><div class="empty-icon">⏳</div><p>Fila vazia</p></div>
@@ -837,9 +850,13 @@ textarea{resize:vertical;min-height:72px}
     </div>
     <!-- Step 2 -->
     <div id="dw-step2" style="display:none">
-      <div style="font-size:13px;color:var(--text-m);margin-bottom:12px">Preview do agendamento com base nos seus limites:</div>
-      <div id="dw-schedule-preview" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
-      <div style="margin-top:12px;font-size:12px;color:var(--text-m)" id="dw-conclusao"></div>
+      <div style="font-size:13px;color:var(--text-m);margin-bottom:12px">Preview do agendamento:</div>
+      <div id="dw-schedule-preview" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;margin-bottom:12px"></div>
+      <div style="margin-top:4px;font-size:12px;color:var(--text-m);margin-bottom:16px" id="dw-conclusao"></div>
+      <div style="font-size:12px;font-weight:600;color:var(--text-m);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Exemplos de mensagens</div>
+      <div id="dw-msg-preview" style="display:flex;flex-direction:column;gap:8px">
+        <div style="color:var(--text-d);font-size:12px">Carregando prévia...</div>
+      </div>
     </div>
     <!-- Step 3 -->
     <div id="dw-step3" style="display:none">
@@ -1024,6 +1041,15 @@ function handleWS(d) {
       feed.insertBefore(card, feed.firstChild);
     }
 
+    if (d.tipo === 'lead_duplicado') {
+      var feed2 = document.getElementById('live-leads-feed');
+      if (feed2.querySelector('[data-placeholder]')) feed2.innerHTML = '';
+      var dup = document.createElement('div');
+      dup.style.cssText = 'background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;opacity:.5';
+      dup.innerHTML = '<span style="font-size:11px;color:var(--text-d)">⏭</span><span style="font-size:12px;color:var(--text-d)">'+esc(d.empresa_nome||'')+'</span><span style="font-size:10px;color:var(--text-d);margin-left:auto">duplicado</span>';
+      feed2.insertBefore(dup, feed2.firstChild);
+    }
+
     if (d.tipo === 'lead_erro') {
       liveState.erros++;
       document.getElementById('live-stat-erros').textContent = liveState.erros;
@@ -1065,11 +1091,17 @@ function handleWS(d) {
   }
 
   if (d.tipo==='resposta') {
+    // Increment unread badge
+    if (!document.getElementById('page-respostas')?.classList.contains('active')) {
+      incrementBadgeRespostas();
+    }
     toast('🔔 Nova resposta! Classificação: '+(d.classificacao||''),'info');
-    // If Respostas tab is open, refresh it
     if (document.getElementById('page-respostas')?.classList.contains('active')) loadRespostas();
-    // If Kanban is open, refresh it
     if (document.getElementById('page-kanban')?.classList.contains('active')) loadKanban();
+  }
+
+  if (d.tipo==='sugestao_blacklist') {
+    mostrarSugestaoBlacklist(d.lead_id);
   }
 
   if (d.tipo==='queue_progress') {
@@ -1105,7 +1137,7 @@ function nav(page, el) {
   if (page==='dashboard') loadDash();
   if (page==='campanhas') loadCampanhas();
   if (page==='leads') { populateCampFilter(); loadLeads(); }
-  if (page==='respostas') loadRespostas();
+  if (page==='respostas') { clearBadgeRespostas(); loadRespostas(); }
   if (page==='kanban') { populateKanbanFilter(); loadKanban(); }
   if (page==='analytics') { populateAnalyticsCamps(); loadAnalytics(); }
   if (page==='fila') { populateFilaFilter(); loadFila(); }
@@ -1366,6 +1398,23 @@ function dwBuildSchedule() {
     </div>`).join('');
   var lastDay = days[days.length-1];
   document.getElementById('dw-conclusao').innerHTML = `📅 Estimativa de conclusão: <strong>${lastDay?lastDay.label:'-'}</strong> · ${total} leads no total`;
+
+  // Load message previews for first 3 leads
+  var campId = document.getElementById('dw-campanha-id').value;
+  var prevBox = document.getElementById('dw-msg-preview');
+  if (campId) {
+    api('GET','/leads?campanha_id='+campId+'&status=pendente&limit=3').then(function(leads){
+      var arr = Array.isArray(leads) ? leads : [];
+      if (!arr.length) { prevBox.innerHTML='<div style="color:var(--text-d);font-size:12px">Nenhum lead pendente para preview.</div>'; return; }
+      prevBox.innerHTML = arr.map(function(l){
+        var msg = (dwSelectedLeadIds ? (l.mensagem_gerada||'') : (l.mensagem_gerada||''));
+        return '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 12px">'
+          +'<div style="font-size:11px;font-weight:600;color:var(--purple-l);margin-bottom:6px">'+esc(l.nome||'')+'</div>'
+          +'<div style="font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap">'+esc(msg.slice(0,200))+(msg.length>200?'…':'')+'</div>'
+          +'</div>';
+      }).join('');
+    }).catch(function(){ prevBox.innerHTML='<div style="color:var(--text-d);font-size:12px">Erro ao carregar preview.</div>'; });
+  }
 }
 
 function dwBuildResume() {
@@ -1485,6 +1534,68 @@ async function loadCampanhasArquivadas() {
       </div></td>
     </tr>`).join('');
   } catch(e){toast('Erro arquivadas: '+e.message,'error');}
+}
+
+// ── Unread responses badge ────────────────────────────────────────────────
+var unreadRespostas = 0;
+
+function incrementBadgeRespostas() {
+  unreadRespostas++;
+  var b = document.getElementById('badge-respostas');
+  b.textContent = unreadRespostas > 99 ? '99+' : unreadRespostas;
+  b.style.display = 'inline-block';
+}
+
+function clearBadgeRespostas() {
+  unreadRespostas = 0;
+  var b = document.getElementById('badge-respostas');
+  b.style.display = 'none';
+  b.textContent = '0';
+}
+
+async function initRespostasBadge() {
+  try {
+    var resp = await api('GET','/leads?status=respondeu&limit=5000');
+    var leads = Array.isArray(resp) ? resp : [];
+    if (leads.length > 0) {
+      unreadRespostas = leads.length;
+      var b = document.getElementById('badge-respostas');
+      b.textContent = leads.length > 99 ? '99+' : leads.length;
+      b.style.display = 'inline-block';
+    }
+  } catch(e) {}
+}
+
+// ── Blacklist suggestion ──────────────────────────────────────────────────
+async function mostrarSugestaoBlacklist(leadId) {
+  var lead = leadsCache[leadId];
+  var nome = lead ? lead.nome : 'Lead';
+  var telefone = lead ? lead.telefone : '';
+
+  // Remove any existing suggestion
+  document.getElementById('bl-sug-box')?.remove();
+
+  var box = document.createElement('div');
+  box.id = 'bl-sug-box';
+  box.className = 'bl-suggestion';
+  box.innerHTML = `
+    <div class="bl-suggestion-title">⛔ ${esc(nome)} não tem interesse</div>
+    <div class="bl-suggestion-sub">Adicionar à blacklist para não receber mais mensagens?</div>
+    <div class="bl-suggestion-actions">
+      <button class="btn btn-danger btn-sm" onclick="confirmarBlacklistSugestao('${leadId}','${esc(nome)}','${esc(telefone)}')">⛔ Blacklist</button>
+      <button class="btn btn-outline btn-sm" onclick="this.closest('.bl-suggestion').remove()">Ignorar</button>
+    </div>`;
+  document.body.appendChild(box);
+  setTimeout(()=>box.remove(), 15000);
+}
+
+async function confirmarBlacklistSugestao(leadId, nome, telefone) {
+  try {
+    await api('POST','/leads/'+leadId+'/blacklist');
+    document.getElementById('bl-sug-box')?.remove();
+    toast('⛔ '+nome+' adicionado à blacklist','info');
+    if (document.getElementById('page-leads')?.classList.contains('active')) loadLeads();
+  } catch(e){toast('Erro: '+e.message,'error');}
 }
 
 async function loadSafetyWidget() {
@@ -1881,15 +1992,31 @@ async function loadFila() {
     var items=(resp3&&resp3.data)?resp3.data:(Array.isArray(resp3)?resp3:[]);
     var tbody=document.getElementById('fila-tbody');
     var empty=document.getElementById('fila-empty');
+    // Fill summary
+    var pending = items.filter(q=>q.status==='pending').length;
+    var sent = items.filter(q=>q.status==='sent').length;
+    var failed = items.filter(q=>q.status==='failed').length;
+    var nextItem = items.filter(q=>q.status==='pending').sort((a,b)=>new Date(a.scheduled_at)-new Date(b.scheduled_at))[0];
+    document.getElementById('fq-pending').textContent = pending;
+    document.getElementById('fq-sent').textContent = sent;
+    document.getElementById('fq-failed').textContent = failed;
+    document.getElementById('fq-next').textContent = nextItem ? fmt(nextItem.scheduled_at) : '—';
+    document.getElementById('fila-summary').style.display = items.length ? 'grid' : 'none';
+
     if(!items.length){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
+
+    // Get campanha names
+    var campMap={};
+    campanhas.forEach(c=>campMap[c.id]=c.nome);
+
     tbody.innerHTML=items.map(q=>`<tr>
-      <td>${esc((q.leads&&q.leads.nome)||q.lead_id)}</td>
-      <td>${esc('')}</td>
+      <td><strong>${esc((q.leads&&q.leads.nome)||'–')}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc((q.leads&&q.leads.telefone)||'')}</span></td>
+      <td style="font-size:12px;color:var(--text-m)">${esc(campMap[q.campanha_id]||'–')}</td>
       <td style="font-size:12px">${fmt(q.scheduled_at)}</td>
       <td>${bdg(q.status)}</td>
-      <td style="font-size:12px;color:var(--text-m)">${q.type==='followup'?'Follow-up #'+q.followup_step:'Inicial'}</td>
-      <td>${q.status==='pending'?`<button class="btn btn-danger btn-xs" onclick="cancelQueue('${q.id}')">✕</button>`:''}</td>
+      <td style="font-size:12px;color:var(--text-m)">${q.type==='followup'?'📅 Follow-up #'+q.followup_step:'📤 Inicial'}</td>
+      <td>${q.status==='pending'?`<button class="btn btn-danger btn-xs" onclick="cancelQueue('${q.id}')">✕ Cancelar</button>`:''}</td>
     </tr>`).join('');
   }catch(e){toast('Erro fila: '+e.message,'error');}
 }
@@ -2144,6 +2271,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelect
 function init(){
   connectWS();
   loadDash();
+  initRespostasBadge();
   // Check WA status periodically
   setInterval(async()=>{
     try{var inst=await api('GET','/whatsapp/instances')||[];var on=inst.some(i=>i.status==='connected');document.getElementById('waDot').className='dot'+(on?' on':'');document.getElementById('waLbl').textContent=on?'WhatsApp ✓':'WhatsApp ✗';}catch(e){}
