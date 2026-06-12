@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
 
   let query = supabase
     .from('leads')
-    .select('*, lead_tags(tag_id, tags(id, nome, cor))', { count: 'exact' })
+    .select('*', { count: 'exact' })
     .order('criado_em', { ascending: false })
     .range(Number(offset), Number(offset) + Number(limit) - 1);
 
