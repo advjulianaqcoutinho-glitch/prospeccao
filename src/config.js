@@ -19,8 +19,8 @@ const config = {
   EVOLUTION_INSTANCE: required('EVOLUTION_INSTANCE'),
   PORT: parseInt(optional('PORT', '3000'), 10),
   JWT_SECRET: required('JWT_SECRET'),
-  META_PIXEL_ID: required('META_PIXEL_ID'),
-  META_ACCESS_TOKEN: required('META_ACCESS_TOKEN'),
+  META_PIXEL_ID: optional('META_PIXEL_ID', ''),
+  META_ACCESS_TOKEN: optional('META_ACCESS_TOKEN', ''),
   BUSINESS_TZ: optional('BUSINESS_TZ', 'America/Sao_Paulo'),
 };
 
