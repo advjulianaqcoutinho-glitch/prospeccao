@@ -908,7 +908,7 @@ function verMensagemBtn(btn) {
 }
 function verMensagem(lead) {
   document.getElementById('msg-lead-label').textContent = lead.nome || lead.name || 'Lead';
-  document.getElementById('msg-content').textContent = lead.mensagem || lead.message || lead.msg || '(Nenhuma mensagem gerada para este lead ainda.)';
+  document.getElementById('msg-content').textContent = lead.mensagem_gerada || lead.mensagem || lead.message || lead.msg || '(Nenhuma mensagem gerada para este lead ainda.)';
   openModal('modal-ver-mensagem');
 }
 function copiarMensagem() {
