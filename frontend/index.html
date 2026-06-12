@@ -1134,6 +1134,33 @@ function startStuckWatcher() {
 // ── Navigation ────────────────────────────────────────────────────────────
 var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',scoring:'Scoring de Leads',config:'Configurações'};
 
+// ── Page cache: stores last rendered data so switching tabs is instant ────────
+var pageCache = {};
+var pageCacheTTL = 30000; // 30s before background refresh
+
+function navLoad(page) {
+  var now = Date.now();
+  var cached = pageCache[page];
+  var stale = !cached || (now - cached.ts) > pageCacheTTL;
+
+  // Always render from cache first (instant), then refresh in background if stale
+  if (page==='dashboard') { if (stale) loadDash(); }
+  if (page==='campanhas') { if (stale) loadCampanhas(); }
+  if (page==='leads') { populateCampFilter(); if (stale) loadLeads(); }
+  if (page==='respostas') { clearBadgeRespostas(); if (stale) loadRespostas(); }
+  if (page==='kanban') { populateKanbanFilter(); if (stale) loadKanban(); }
+  if (page==='analytics') { populateAnalyticsCamps(); if (stale) loadAnalytics(); }
+  if (page==='fila') { populateFilaFilter(); if (stale) loadFila(); }
+  if (page==='templates') { if (stale) loadTemplates(); }
+  if (page==='whatsapp') { if (stale) loadWAInstances(); }
+  if (page==='blacklist') { if (stale) loadBlacklist(); }
+  if (page==='scoring') { if (stale) loadScoring(); }
+  if (page==='config') { if (stale) loadConfig(); }
+}
+
+function markCached(page) { pageCache[page] = { ts: Date.now() }; }
+function invalidateCache(page) { if (page) delete pageCache[page]; else pageCache = {}; }
+
 function nav(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1141,18 +1168,7 @@ function nav(page, el) {
   if (el) el.classList.add('active');
   else document.querySelectorAll('.nav-item').forEach(n=>{if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+page+"'"))n.classList.add('active');});
   document.getElementById('topbar-title').textContent = titles[page] || page;
-  if (page==='dashboard') loadDash();
-  if (page==='campanhas') loadCampanhas();
-  if (page==='leads') { populateCampFilter(); loadLeads(); }
-  if (page==='respostas') { clearBadgeRespostas(); loadRespostas(); }
-  if (page==='kanban') { populateKanbanFilter(); loadKanban(); }
-  if (page==='analytics') { populateAnalyticsCamps(); loadAnalytics(); }
-  if (page==='fila') { populateFilaFilter(); loadFila(); }
-  if (page==='templates') loadTemplates();
-  if (page==='whatsapp') loadWAInstances();
-  if (page==='blacklist') loadBlacklist();
-  if (page==='scoring') loadScoring();
-  if (page==='config') loadConfig();
+  navLoad(page);
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -1170,6 +1186,7 @@ async function loadDash() {
     var leads = s.recentLeads||[];
     if (!leads.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-m);padding:20px">Nenhum lead ainda</td></tr>'; return; }
     tbody.innerHTML = leads.map(l=>`<tr><td><strong>${esc(l.nome)}</strong></td><td style="color:var(--text-m)">${esc(l.telefone)}</td><td>${scoreBadge(l.score)}</td><td>${bdg(l.status)}</td><td style="font-size:11px;color:var(--text-m)">${fmt(l.criado_em)}</td></tr>`).join('');
+    markCached('dashboard');
   } catch(e){ toast('Erro dashboard: '+e.message,'error'); }
 }
 
@@ -1211,6 +1228,7 @@ async function loadCampanhas() {
         <button class="btn btn-danger btn-xs" onclick="abrirModalArquivar('${c.id}')">🗑</button>
       </div></td>
     </tr>`).join('');
+    markCached('campanhas');
   } catch(e){ toast('Erro campanhas: '+e.message,'error'); }
 }
 
@@ -1727,6 +1745,7 @@ async function loadLeads() {
         <button class="btn btn-danger btn-xs" title="Blacklist" onclick="blacklistLead('${l.id}','${esc(l.nome)}')">⛔</button>
       </div></td>
     </tr>`).join('');
+    markCached('leads');
   } catch(e){toast('Erro leads: '+e.message,'error');}
 }
 
@@ -2025,6 +2044,7 @@ async function loadFila() {
       <td style="font-size:12px;color:var(--text-m)">${q.type==='followup'?'📅 Follow-up #'+q.followup_step:'📤 Inicial'}</td>
       <td>${q.status==='pending'?`<button class="btn btn-danger btn-xs" onclick="cancelQueue('${q.id}')">✕ Cancelar</button>`:''}</td>
     </tr>`).join('');
+    markCached('fila');
   }catch(e){toast('Erro fila: '+e.message,'error');}
 }
 
@@ -2317,6 +2337,7 @@ async function loadRespostas() {
         </select>
       </div></td>
     </tr>`).join('');
+    markCached('respostas');
   } catch(e){toast('Erro respostas: '+e.message,'error');}
 }
 
@@ -2412,6 +2433,7 @@ async function loadAnalytics() {
       <td style="color:var(--green)">R$${(c.pipeline||0).toLocaleString('pt-BR')}</td>
       <td>${scoreBadge(c.avg_score)}</td>
     </tr>`).join('');
+    markCached('analytics');
   } catch(e){toast('Erro analytics: '+e.message,'error');}
 }
 
@@ -2438,6 +2460,7 @@ async function loadTemplates() {
         <div style="font-size:12px;color:var(--text-m);line-height:1.5;max-height:80px;overflow:hidden">${esc(t.conteudo)}</div>
         <button class="btn btn-outline btn-xs" style="margin-top:8px" onclick="usarTemplate('${esc(t.conteudo)}')">Usar em mensagem</button>
       </div>`).join('');
+    markCached('templates');
   } catch(e){toast('Erro templates: '+e.message,'error');}
 }
 
