@@ -8,6 +8,7 @@ const path = require('path');
 const cron = require('node-cron');
 const axios = require('axios');
 const { WebSocketServer } = require('ws');
+const WebSocket = require('ws');
 const http = require('http');
 
 const app = express();
@@ -21,7 +22,8 @@ app.use(express.json());
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_KEY,
+  { realtime: { transport: WebSocket } }
 );
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
