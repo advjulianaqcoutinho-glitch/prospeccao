@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
       supabase.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
       supabase.from('leads').select('id', { count: 'exact', head: true }).eq('status', 'enviado'),
       supabase.from('leads').select('id', { count: 'exact', head: true }).in('status', ['interessado', 'muito_interessado']),
-      supabase.from('leads').select('deal_value').not('deal_value', 'is', null).catch(() => ({ data: [] })),
+      supabase.from('leads').select('deal_value').not('deal_value', 'is', null),
       supabase.from('leads').select('id, nome, telefone, status, campanha_id, criado_em').order('criado_em', { ascending: false }).limit(8),
     ]);
 
