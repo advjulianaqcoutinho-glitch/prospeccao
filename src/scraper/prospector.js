@@ -72,9 +72,15 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
       try {
         sendProgress({
           tipo: 'processando',
-          mensagem: `Processando ${empresa.nome} (${i + 1}/${empresas.length})`,
+          mensagem: `Buscando dados de ${empresa.nome}`,
           atual: i + 1,
           total: empresas.length,
+          empresa_nome: empresa.nome,
+          empresa_telefone: empresa.telefone || null,
+          empresa_endereco: empresa.endereco || null,
+          empresa_rating: empresa.rating || null,
+          empresa_reviews: empresa.review_count || null,
+          empresa_website: empresa.website || null,
         });
 
         // ── Blacklist check ──────────────────────────────────────────────
@@ -198,9 +204,28 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
           }
         }
 
+        sendProgress({
+          tipo: 'lead_salvo',
+          mensagem: `✅ ${empresa.nome} salvo (score: ${score ?? '–'})`,
+          atual: i + 1,
+          total: empresas.length,
+          empresa_nome: empresa.nome,
+          empresa_telefone: empresa.telefone || null,
+          empresa_rating: empresa.rating || null,
+          lead_score: score,
+          salvos_ate_agora: salvos + 1,
+        });
+
         salvos++;
       } catch (err) {
         console.error(`[prospector] Erro ao processar ${empresa.nome}:`, err.message);
+        sendProgress({
+          tipo: 'lead_erro',
+          mensagem: `⚠️ Erro em ${empresa.nome}: ${err.message}`,
+          atual: i + 1,
+          total: empresas.length,
+          empresa_nome: empresa.nome,
+        });
         erros++;
       }
     }

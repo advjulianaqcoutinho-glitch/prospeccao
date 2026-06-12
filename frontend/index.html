@@ -647,6 +647,70 @@ textarea{resize:vertical;min-height:72px}
   </div>
 </div>
 
+<!-- MODAL PROSPECÇÃO AO VIVO -->
+<div class="modal-overlay" id="modal-prospeccao-live" style="display:none" onclick="closeOuter(event,'modal-prospeccao-live')">
+  <div class="modal modal-xl" onclick="event.stopPropagation()" style="max-height:90vh">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <span id="live-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--yellow);display:inline-block;animation:pulse 1.5s infinite"></span>
+          <span id="live-title">Prospecção em andamento</span>
+        </div>
+        <div id="live-campanha-nome" style="font-size:12px;color:var(--text-m);margin-top:2px"></div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="closeModal('modal-prospeccao-live')">Minimizar ↓</button>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-m);margin-bottom:6px">
+        <span id="live-step-label">Iniciando...</span>
+        <span id="live-counter" style="font-weight:600;color:var(--purple-l)">0 / 0</span>
+      </div>
+      <div style="background:rgba(255,255,255,.06);border-radius:20px;height:8px;overflow:hidden">
+        <div id="live-bar" style="height:100%;background:linear-gradient(90deg,var(--purple),var(--purple-l));border-radius:20px;width:0;transition:width .5s"></div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:var(--bg3);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--green)" id="live-stat-salvos">0</div>
+        <div style="font-size:11px;color:var(--text-m);margin-top:2px">Salvos</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--blue)" id="live-stat-processados">0</div>
+        <div style="font-size:11px;color:var(--text-m);margin-top:2px">Processados</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--yellow)" id="live-stat-total">–</div>
+        <div style="font-size:11px;color:var(--text-m);margin-top:2px">Encontrados</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--red)" id="live-stat-erros">0</div>
+        <div style="font-size:11px;color:var(--text-m);margin-top:2px">Erros</div>
+      </div>
+    </div>
+
+    <!-- Alert: stuck -->
+    <div id="live-stuck-alert" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:12px">
+      ⚠️ Nenhuma atualização há mais de 90 segundos. O scraper pode estar com dificuldade para acessar o Google Maps. Isso é normal — ele continua rodando em segundo plano.
+    </div>
+
+    <!-- Live feed -->
+    <div style="font-size:12px;font-weight:600;color:var(--text-m);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Leads encontrados</div>
+    <div id="live-leads-feed" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+      <div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px">Aguardando o primeiro resultado...</div>
+    </div>
+
+    <div class="modal-footer" style="margin-top:12px">
+      <div id="live-finish-msg" style="font-size:13px;color:var(--text-m);flex:1"></div>
+      <button class="btn btn-outline" onclick="closeModal('modal-prospeccao-live')">Fechar</button>
+      <button class="btn btn-primary" onclick="nav('leads',null);closeModal('modal-prospeccao-live')" id="live-ver-leads-btn" style="display:none">Ver Leads →</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL SCORING RULE -->
 <div class="modal-overlay" id="modal-scoring-rule" style="display:none" onclick="closeOuter(event,'modal-scoring-rule')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -777,28 +841,134 @@ function setWSDot(on) {
   document.getElementById('wsLbl').textContent = on ? 'Conectado' : 'Desconectado';
 }
 
+// ── Live prospecting state ────────────────────────────────────────────────
+var liveState = { active: false, lastUpdate: 0, stuckTimer: null, erros: 0 };
+
 function handleWS(d) {
-  var box = document.getElementById('ws-log-box');
-  var log = document.getElementById('dash-log');
-  var bar = document.getElementById('dash-bar');
-  var tipos = ['inicio','processando','scraping_concluido','concluido','erro'];
-  if (tipos.includes(d.tipo)) {
+  // ── Prospecting live progress ──────────────────────────────────────────
+  var prospTypes = ['inicio','scraping_concluido','processando','lead_salvo','lead_erro','concluido','erro'];
+  if (prospTypes.includes(d.tipo)) {
+    // Auto-open live modal on first message
+    if (d.tipo === 'inicio') {
+      liveState = { active: true, lastUpdate: Date.now(), stuckTimer: null, erros: 0 };
+      document.getElementById('live-stat-salvos').textContent = '0';
+      document.getElementById('live-stat-processados').textContent = '0';
+      document.getElementById('live-stat-total').textContent = '–';
+      document.getElementById('live-stat-erros').textContent = '0';
+      document.getElementById('live-bar').style.width = '0';
+      document.getElementById('live-counter').textContent = '0 / 0';
+      document.getElementById('live-leads-feed').innerHTML = '<div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px">Aguardando o primeiro resultado...</div>';
+      document.getElementById('live-finish-msg').textContent = '';
+      document.getElementById('live-ver-leads-btn').style.display = 'none';
+      document.getElementById('live-stuck-alert').style.display = 'none';
+      document.getElementById('live-status-dot').style.background = 'var(--yellow)';
+      document.getElementById('live-title').textContent = 'Prospecção em andamento';
+      document.getElementById('live-campanha-nome').textContent = d.campanha_nome || '';
+      openModal('modal-prospeccao-live');
+      startStuckWatcher();
+    }
+
+    liveState.lastUpdate = Date.now();
+    document.getElementById('live-stuck-alert').style.display = 'none';
+    document.getElementById('live-step-label').textContent = d.mensagem || '';
+
+    if (d.tipo === 'scraping_concluido') {
+      document.getElementById('live-stat-total').textContent = d.total || '0';
+      document.getElementById('live-counter').textContent = '0 / '+(d.total||'?');
+    }
+
+    if ((d.tipo === 'processando' || d.tipo === 'lead_salvo' || d.tipo === 'lead_erro') && d.total) {
+      var pct = Math.round((d.atual / d.total) * 100);
+      document.getElementById('live-bar').style.width = pct + '%';
+      document.getElementById('live-counter').textContent = d.atual + ' / ' + d.total;
+      document.getElementById('live-stat-processados').textContent = d.atual;
+    }
+
+    if (d.tipo === 'lead_salvo') {
+      document.getElementById('live-stat-salvos').textContent = d.salvos_ate_agora || document.getElementById('live-stat-salvos').textContent;
+      var feed = document.getElementById('live-leads-feed');
+      // Remove placeholder
+      if (feed.querySelector('[data-placeholder]')) feed.innerHTML = '';
+      var card = document.createElement('div');
+      card.style.cssText = 'background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;animation:slideUp .2s';
+      var scoreColor = !d.lead_score ? 'var(--text-d)' : d.lead_score >= 70 ? 'var(--green)' : d.lead_score >= 40 ? 'var(--yellow)' : 'var(--red)';
+      card.innerHTML = '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:500">'+esc(d.empresa_nome||'')+'</div>'
+        + '<div style="font-size:11px;color:var(--text-m);margin-top:2px">'
+        + (d.empresa_telefone ? '📞 '+esc(d.empresa_telefone) : '')
+        + (d.empresa_rating ? ' · ⭐ '+d.empresa_rating : '')
+        + (d.empresa_website ? ' · 🌐 Site' : '')
+        + '</div></div>'
+        + '<span style="font-size:12px;font-weight:700;color:'+scoreColor+';min-width:36px;text-align:right">'+(d.lead_score != null ? d.lead_score : '–')+'</span>';
+      feed.insertBefore(card, feed.firstChild);
+    }
+
+    if (d.tipo === 'lead_erro') {
+      liveState.erros++;
+      document.getElementById('live-stat-erros').textContent = liveState.erros;
+    }
+
+    if (d.tipo === 'concluido') {
+      liveState.active = false;
+      clearInterval(liveState.stuckTimer);
+      document.getElementById('live-bar').style.width = '100%';
+      document.getElementById('live-status-dot').style.background = 'var(--green)';
+      document.getElementById('live-status-dot').style.animation = 'none';
+      document.getElementById('live-title').textContent = 'Prospecção concluída!';
+      document.getElementById('live-stat-salvos').textContent = d.salvos || document.getElementById('live-stat-salvos').textContent;
+      document.getElementById('live-finish-msg').textContent = (d.salvos||0)+' leads salvos com sucesso.';
+      document.getElementById('live-ver-leads-btn').style.display = 'inline-flex';
+      toast('✅ Prospecção concluída! '+(d.salvos||0)+' leads salvos.','success');
+      loadDash(); loadCampanhas();
+    }
+
+    if (d.tipo === 'erro') {
+      liveState.active = false;
+      clearInterval(liveState.stuckTimer);
+      document.getElementById('live-status-dot').style.background = 'var(--red)';
+      document.getElementById('live-status-dot').style.animation = 'none';
+      document.getElementById('live-title').textContent = 'Erro na prospecção';
+      document.getElementById('live-finish-msg').textContent = d.mensagem || 'Erro desconhecido';
+      document.getElementById('live-finish-msg').style.color = 'var(--red)';
+      toast('❌ Erro: '+d.mensagem,'error');
+      openModal('modal-prospeccao-live');
+    }
+
+    // Also update dashboard progress bar (keeps backwards compat)
+    var box = document.getElementById('ws-log-box');
+    var log = document.getElementById('dash-log');
     box.style.display = 'block';
     var line = document.createElement('div');
     line.textContent = '['+new Date().toLocaleTimeString()+'] '+d.mensagem;
     log.appendChild(line); log.scrollTop = log.scrollHeight;
-    if (d.tipo==='processando' && d.total) bar.style.width = Math.round(d.atual/d.total*100)+'%';
-    if (d.tipo==='concluido') { bar.style.width='100%'; toast('Prospecção concluída! '+d.salvos+' leads salvos.','success'); setTimeout(()=>{box.style.display='none';loadDash();},5000); }
-    if (d.tipo==='erro') toast('Erro: '+d.mensagem,'error');
   }
+
   if (d.tipo==='resposta') {
-    toast('🔔 Nova resposta de '+d.lead_nome+' ('+d.classificacao+')','info');
+    toast('🔔 Nova resposta! Classificação: '+(d.classificacao||''),'info');
+    // If Respostas tab is open, refresh it
+    if (document.getElementById('page-respostas')?.classList.contains('active')) loadRespostas();
+    // If Kanban is open, refresh it
+    if (document.getElementById('page-kanban')?.classList.contains('active')) loadKanban();
   }
-  if (d.tipo==='enviado') {
-    var line2 = document.createElement('div');
-    line2.textContent = '['+new Date().toLocaleTimeString()+'] ✅ Enviado para '+d.lead_nome;
-    log.appendChild(line2); box.style.display='block';
+
+  if (d.tipo==='queue_progress') {
+    var box2 = document.getElementById('ws-log-box');
+    var log2 = document.getElementById('dash-log');
+    box2.style.display = 'block';
+    var l2 = document.createElement('div');
+    l2.textContent = '['+new Date().toLocaleTimeString()+'] '+(d.status==='sent'?'✅ Enviado para ':'❌ Falha: ')+esc(d.nome||'');
+    log2.appendChild(l2); log2.scrollTop = log2.scrollHeight;
   }
+}
+
+function startStuckWatcher() {
+  clearInterval(liveState.stuckTimer);
+  liveState.stuckTimer = setInterval(function() {
+    if (!liveState.active) { clearInterval(liveState.stuckTimer); return; }
+    if (Date.now() - liveState.lastUpdate > 90000) {
+      document.getElementById('live-stuck-alert').style.display = 'block';
+    }
+  }, 10000);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
@@ -874,7 +1044,7 @@ async function loadCampanhas() {
       <td>${bdg(c.status)}</td>
       <td style="font-size:11px;color:var(--text-m)">${fmt(c.criado_em)}</td>
       <td><div class="td-actions">
-        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍</button>`:`<button class="btn btn-outline btn-xs" disabled>⏳</button>`}
+        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-warning btn-xs" onclick="openModal('modal-prospeccao-live')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
         <button class="btn btn-success btn-xs" onclick="dispararMassa('${c.id}',this)">📤 Massa</button>
         <button class="btn btn-outline btn-xs" onclick="openFollowup('${c.id}')">📅 FU</button>
         <button class="btn btn-danger btn-xs" onclick="deletarCampanha('${c.id}')">🗑</button>
@@ -914,11 +1084,33 @@ async function criarCampanha(btn) {
 async function prospectar(id, btn) {
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
   try {
+    var campanha = campanhas.find(c=>c.id===id) || {};
+    // Pre-open the modal in "waiting" state
+    liveState = { active: true, lastUpdate: Date.now(), stuckTimer: null, erros: 0 };
+    document.getElementById('live-stat-salvos').textContent = '0';
+    document.getElementById('live-stat-processados').textContent = '0';
+    document.getElementById('live-stat-total').textContent = '–';
+    document.getElementById('live-stat-erros').textContent = '0';
+    document.getElementById('live-bar').style.width = '0';
+    document.getElementById('live-counter').textContent = '0 / 0';
+    document.getElementById('live-step-label').textContent = 'Iniciando o extrator...';
+    document.getElementById('live-leads-feed').innerHTML = '<div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px" data-placeholder>Aguardando o primeiro resultado...</div>';
+    document.getElementById('live-finish-msg').textContent = '';
+    document.getElementById('live-ver-leads-btn').style.display = 'none';
+    document.getElementById('live-stuck-alert').style.display = 'none';
+    document.getElementById('live-status-dot').style.cssText = 'width:10px;height:10px;border-radius:50%;background:var(--yellow);display:inline-block;animation:pulse 1.5s infinite';
+    document.getElementById('live-title').textContent = 'Prospecção em andamento';
+    document.getElementById('live-campanha-nome').textContent = campanha.nome ? '📍 '+campanha.nicho+' · '+campanha.cidade : '';
+    openModal('modal-prospeccao-live');
+    startStuckWatcher();
+
     await api('POST','/campanhas/'+id+'/prospectar');
     toast('Prospecção iniciada!','success');
-    nav('dashboard',null);
     loadCampanhas();
-  } catch(e){toast('Erro: '+e.message,'error');}
+  } catch(e){
+    toast('Erro: '+e.message,'error');
+    closeModal('modal-prospeccao-live');
+  }
   btn.disabled=false;btn.innerHTML='🔍';
 }
 

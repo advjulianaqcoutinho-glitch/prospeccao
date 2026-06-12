@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { fork } = require('child_process');
 const path = require('path');
 const supabase = require('../db');
+const ws = require('../ws');
 
 const router = Router();
 
@@ -115,8 +116,33 @@ router.post('/:id/prospectar', async (req, res) => {
   const prospectorPath = path.resolve(__dirname, '../../src/scraper/prospector.js');
   const child = fork(prospectorPath, [JSON.stringify(campanha)], {
     detached: true,
-    stdio: 'ignore',
+    stdio: 'pipe', // keep IPC + pipe stderr for crash logs
   });
+
+  // Forward all progress messages from the scraper to WebSocket clients
+  child.on('message', (msg) => {
+    ws.broadcast({ ...msg, campanha_id: req.params.id, campanha_nome: campanha.nome });
+  });
+
+  child.stderr?.on('data', (data) => {
+    console.error(`[prospector:${req.params.id}]`, data.toString().trim());
+    ws.broadcast({
+      tipo: 'erro',
+      mensagem: data.toString().trim().slice(0, 200),
+      campanha_id: req.params.id,
+    });
+  });
+
+  child.on('exit', (code) => {
+    if (code !== 0 && code !== null) {
+      ws.broadcast({
+        tipo: 'erro',
+        mensagem: `Processo encerrou inesperadamente (código ${code})`,
+        campanha_id: req.params.id,
+      });
+    }
+  });
+
   child.unref();
 
   return res.json({ message: 'Prospecção iniciada', campanha_id: req.params.id });
