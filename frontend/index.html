@@ -1913,10 +1913,12 @@ async function loadWAInstances() {
     var el=document.getElementById('wa-instances-list');
     if(!inst.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">💬</div><p>Nenhuma instância configurada. Clique em "+ Nova Instância" para começar.</p></div>';return;}
     renderWAInstances(inst);
-    // Auto-check real status from Evolution for each instance in parallel
-    Promise.all(inst.map(i=>
-      api('GET','/whatsapp/instances/'+i.id+'/status').catch(()=>null)
-    )).then(()=> api('GET','/whatsapp/instances').then(fresh=>{if(fresh)renderWAInstances(fresh);}).catch(()=>{}));
+    // Silently refresh real status from Evolution after render
+    setTimeout(async()=>{
+      await Promise.all(inst.map(i=>api('GET','/whatsapp/instances/'+i.id+'/status').catch(()=>null)));
+      var fresh=await api('GET','/whatsapp/instances').catch(()=>null);
+      if(fresh) renderWAInstances(fresh);
+    }, 500);
   }catch(e){toast('Erro WA: '+e.message,'error');}
 }
 
@@ -1953,7 +1955,9 @@ async function checkWAStatus(id, btn) {
     var r=await api('GET','/whatsapp/instances/'+id+'/status');
     var status=r?.resolved_status||'desconhecido';
     toast(status==='connected'?'✅ WhatsApp conectado!':'⚪ Desconectado — escaneie o QR na Evolution API','info');
-    loadWAInstances();
+    // Fetch fresh list directly — status already persisted in DB by backend
+    var fresh=await api('GET','/whatsapp/instances');
+    if(fresh) renderWAInstances(fresh);
   }catch(e){toast('Erro ao verificar: '+e.message,'error');}
   btn.disabled=false;btn.innerHTML='↻ Verificar';
 }
