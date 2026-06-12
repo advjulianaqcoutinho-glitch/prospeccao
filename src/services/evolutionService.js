@@ -53,10 +53,18 @@ async function enviarMensagem(telefone, mensagem, instanceId = null) {
     instance = await getNextInstance();
   }
 
-  const response = await evolutionApi.post(`/message/sendText/${instance.instance_name}`, {
-    number: telefone,
-    text: mensagem,
-  });
+  let response;
+  try {
+    response = await evolutionApi.post(`/message/sendText/${instance.instance_name}`, {
+      number: telefone,
+      text: mensagem,
+    });
+  } catch (axiosErr) {
+    const detail = axiosErr.response?.data;
+    const msg = typeof detail === 'object' ? JSON.stringify(detail) : (detail || axiosErr.message);
+    console.error('[evolutionService] sendText error:', msg);
+    throw new Error(`Evolution API: ${msg}`);
+  }
 
   const messageId =
     response.data?.key?.id ||
