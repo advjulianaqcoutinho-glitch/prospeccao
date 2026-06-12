@@ -2353,12 +2353,22 @@ async function loadRespostas() {
     var empty = document.getElementById('resp-empty');
     if(!items.length){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
-    tbody.innerHTML = items.map(l=>`<tr>
+    tbody.innerHTML = items.map(l=>{
+      var an = l.ai_analise || {};
+      var urgBadge = an.urgencia==='alta'?'<span style="background:rgba(239,68,68,.15);color:var(--red);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:600">🔥 Alta urgência</span>':
+                     an.urgencia==='media'?'<span style="background:rgba(245,158,11,.1);color:var(--yellow);border-radius:6px;padding:1px 6px;font-size:10px">⏱ Média</span>':'';
+      var objBadge = an.objecao?`<span style="background:rgba(239,68,68,.1);color:var(--red);border-radius:6px;padding:1px 6px;font-size:10px">⚠️ ${an.objecao.replace('_',' ')}</span>`:'';
+      var sinBadge = an.sinal_de_compra?'<span style="background:rgba(16,185,129,.15);color:var(--green);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:600">💰 Sinal de compra</span>':'';
+      return `<tr>
       <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.telefone)}</span></td>
       <td style="font-size:12px;color:var(--text-m)">${esc(l.campanhas&&l.campanhas.nome||'')}</td>
-      <td style="max-width:220px;font-size:12px">${esc(l.ultima_resposta||'—')}</td>
+      <td style="max-width:200px">
+        <div style="font-size:12px">${esc(l.ultima_resposta||'—')}</div>
+        <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${urgBadge}${objBadge}${sinBadge}</div>
+        ${an.sugestao?`<div style="font-size:10px;color:var(--text-d);margin-top:3px">💡 ${esc(an.sugestao)}</div>`:''}
+      </td>
       <td style="max-width:220px">
-        ${l.ai_suggested_reply ? `<div style="font-size:11px;color:var(--cyan);background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:8px;padding:6px 8px;line-height:1.4">${esc(l.ai_suggested_reply.slice(0,120))}${l.ai_suggested_reply.length>120?'…':''}</div>
+        ${l.ai_suggested_reply ? `<div style="font-size:11px;color:var(--cyan);background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:8px;padding:6px 8px;line-height:1.4">${esc(l.ai_suggested_reply.slice(0,140))}${l.ai_suggested_reply.length>140?'…':''}</div>
         <button class="btn btn-outline btn-xs" style="margin-top:4px;border-color:rgba(6,182,212,.4);color:var(--cyan)" onclick="usarSugestaoIA('${l.id}','${esc(l.nome)}')">Usar esta resposta</button>` : '<span style="color:var(--text-d);font-size:11px">—</span>'}
       </td>
       <td>${classifBadge(l.classificacao)}</td>
@@ -2373,7 +2383,7 @@ async function loadRespostas() {
           <option value="nao_interessado">Não Interessado</option>
         </select>
       </div></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
     markCached('respostas');
   } catch(e){toast('Erro respostas: '+e.message,'error');}
 }

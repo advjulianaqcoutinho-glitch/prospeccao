@@ -121,12 +121,22 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
         let mensagemGerada = null;
         let mensagemVarianteB = null;
 
+        // Pass all empresa data so AI can use signals for persuasion angle
+        const dadosEmpresa = {
+          rating: empresa.rating,
+          review_count: empresa.review_count,
+          website: empresa.website,
+          cidade: campanha.cidade,
+          endereco: empresa.endereco,
+        };
+
         if (campanha.ab_testing_enabled) {
           const { a, b } = await aiService.gerarMensagemAB(
             empresa.nome,
             nicho,
             contexto || campanha.contexto || '',
-            perfil
+            perfil,
+            dadosEmpresa
           );
           mensagemGerada = a;
           mensagemVarianteB = b;
@@ -135,7 +145,9 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
             empresa.nome,
             nicho,
             contexto || campanha.contexto || '',
-            perfil
+            perfil,
+            'a',
+            dadosEmpresa
           );
         }
 

@@ -5,119 +5,307 @@ const config = require('../config');
 
 const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
 
-async function gerarMensagem(empresa, nicho, contexto, perfil, variante = 'a') {
-  const toneNote =
-    variante === 'b'
-      ? 'Use um tom levemente mais direto e objetivo, focando em resultados concretos.'
-      : 'Use um tom consultivo e amigável, focando em construir relacionamento.';
+// ─── Models ───────────────────────────────────────────────────────────────────
+const MODEL_WRITING = 'gpt-4o';       // Best quality for persuasive writing
+const MODEL_FAST    = 'gpt-4o-mini';  // Fast + cheap for scoring/classification
 
-  const systemPrompt = `Você é ${perfil.nome}, representante da empresa ${perfil.empresa}.
-Descrição da empresa: ${perfil.descricao}
-Tom de comunicação preferido: ${perfil.tom_comunicacao}
-${toneNote}`;
+// ─── Business signal analysis ─────────────────────────────────────────────────
+// Derives persuasion angle from lead's real data before writing the message.
+function analisarSinaisDeNegocio({ rating, review_count, website, cidade, endereco, nicho }) {
+  const sinais = [];
+  const angulos = [];
 
-  const userPrompt = `Gere uma mensagem de prospecção para WhatsApp para a empresa "${empresa}" do nicho "${nicho}".
-Contexto adicional: ${contexto}
-A mensagem deve ser personalizada, natural, não-genérica, e com no máximo 3 parágrafos curtos.
-Não use emojis em excesso. Não inclua saudações formais. Conclua com uma pergunta aberta.`;
+  // Rating signals
+  if (rating >= 4.5) {
+    sinais.push(`Empresa bem avaliada (${rating}★) — clientes satisfeitos`);
+    angulos.push('escala_qualidade'); // "você já tem qualidade, vamos ampliar o alcance"
+  } else if (rating >= 4.0) {
+    sinais.push(`Boa reputação (${rating}★) com espaço para crescer`);
+    angulos.push('crescimento');
+  } else if (rating > 0 && rating < 3.8) {
+    sinais.push(`Avaliação abaixo da média (${rating}★) — pode querer reverter isso`);
+    angulos.push('reputacao'); // "posso ajudar a melhorar sua imagem"
+  }
+
+  // Review count signals
+  if (review_count >= 200) {
+    sinais.push(`${review_count} avaliações — empresa estabelecida com forte presença`);
+    angulos.push('escala_qualidade');
+  } else if (review_count >= 50) {
+    sinais.push(`${review_count} avaliações — negócio ativo e reconhecido localmente`);
+    angulos.push('crescimento');
+  } else if (review_count > 0 && review_count < 20) {
+    sinais.push(`Apenas ${review_count} avaliações — pouca visibilidade online`);
+    angulos.push('visibilidade'); // "você merece ser mais encontrado"
+  } else if (review_count === 0) {
+    sinais.push('Sem avaliações — invisível para clientes que pesquisam online');
+    angulos.push('visibilidade');
+  }
+
+  // Website signal
+  if (!website) {
+    sinais.push('Sem site próprio — perda de credibilidade e clientes online');
+    angulos.push('presenca_digital');
+  } else {
+    sinais.push('Tem site — já investe em presença digital');
+  }
+
+  // Location signal
+  if (cidade) sinais.push(`Localizado em ${cidade}`);
+
+  // Pick best angle (priority order)
+  const prioridade = ['presenca_digital', 'visibilidade', 'reputacao', 'crescimento', 'escala_qualidade'];
+  const anguloEscolhido = prioridade.find(a => angulos.includes(a)) || 'crescimento';
+
+  const descricaoAngulo = {
+    presenca_digital: 'A empresa não tem site — aborde a oportunidade perdida de captar clientes online e como você pode mudar isso.',
+    visibilidade: 'A empresa tem poucas avaliações — aborde como ela está sendo "invisível" para novos clientes que pesquisam no Google/Maps.',
+    reputacao: 'A avaliação está abaixo da concorrência — aborde como isso afeta a decisão de novos clientes e como você pode ajudar.',
+    crescimento: 'A empresa tem boa base mas pode crescer mais — aborde a expansão do alcance e captação de novos clientes.',
+    escala_qualidade: 'A empresa já tem qualidade comprovada — aborde como ela pode escalar resultados e dominar o mercado local.',
+  };
+
+  return {
+    sinais,
+    anguloEscolhido,
+    instrucaoAngulo: descricaoAngulo[anguloEscolhido],
+  };
+}
+
+// ─── Message generation (2-step: analyze → write) ────────────────────────────
+async function gerarMensagem(empresa, nicho, contexto, perfil, variante = 'a', dadosEmpresa = {}) {
+  const { rating, review_count, website, cidade, endereco } = dadosEmpresa;
+  const analise = analisarSinaisDeNegocio({ rating, review_count, website, cidade, endereco, nicho });
+
+  const frameworks = {
+    a: {
+      nome: 'PAS (Problema → Agitação → Solução)',
+      instrucao: `1. Abra tocando em um problema real que o negócio enfrenta (baseado no ângulo: ${analise.anguloEscolhido}).
+2. Amplifique brevemente a consequência desse problema (o que ele perde por não resolver).
+3. Apresente sua solução de forma direta e específica.
+4. Feche com uma pergunta aberta que convide à conversa.`,
+    },
+    b: {
+      nome: 'AIDA (Atenção → Interesse → Desejo → Ação)',
+      instrucao: `1. Abra com um fato ou observação específica sobre a empresa que chame atenção.
+2. Desperte interesse mostrando uma oportunidade concreta.
+3. Crie desejo apresentando o resultado que você entrega (seja específico).
+4. Feche com uma call-to-action leve — uma pergunta ou convite de baixo compromisso.`,
+    },
+  };
+
+  const fw = frameworks[variante] || frameworks.a;
+
+  const systemPrompt = `Você é ${perfil.nome || 'um consultor de marketing'}, representante da empresa "${perfil.empresa || ''}".
+
+SOBRE VOCÊ:
+- Empresa: ${perfil.empresa || ''}
+- O que você faz: ${perfil.descricao || ''}
+- Tom de comunicação: ${perfil.tom_comunicacao || 'profissional e direto'}
+
+REGRAS ABSOLUTAS PARA WHATSAPP:
+- Máximo 4 frases curtas. WhatsApp não é e-mail.
+- Sem saudações formais como "Prezado" ou "Espero que esteja bem".
+- Sem emojis excessivos (máximo 1 por mensagem, apenas se natural).
+- Escreva como uma pessoa real, não como um robô ou vendedor chato.
+- Nunca mencione "prospecção", "marketing digital" de forma genérica — seja específico.
+- A mensagem deve parecer escrita especificamente para esta empresa, não copiada.
+- Use o nome da empresa naturalmente no início.`;
+
+  const userPrompt = `EMPRESA-ALVO: "${empresa}"
+NICHO: ${nicho}
+CIDADE: ${cidade || 'não informada'}
+AVALIAÇÃO: ${rating ? `${rating}★ com ${review_count} avaliações` : 'sem dados de avaliação'}
+SITE: ${website ? website : 'sem site'}
+${endereco ? `ENDEREÇO: ${endereco}` : ''}
+
+ANÁLISE DOS SINAIS:
+${analise.sinais.map(s => `• ${s}`).join('\n')}
+
+ÂNGULO DE ABORDAGEM ESCOLHIDO: ${analise.instrucaoAngulo}
+
+CONTEXTO ADICIONAL DA CAMPANHA: ${contexto || 'nenhum'}
+
+FRAMEWORK A USAR: ${fw.nome}
+${fw.instrucao}
+
+Escreva a mensagem agora. Apenas o texto da mensagem, sem explicações.`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: MODEL_WRITING,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    temperature: variante === 'b' ? 0.5 : 0.7,
+    temperature: variante === 'b' ? 0.75 : 0.65,
+    max_tokens: 300,
+  });
+
+  const mensagem = response.choices[0].message.content.trim();
+
+  // Self-critique: check if message meets quality bar
+  const qualidade = await avaliarQualidadeMensagem(mensagem, empresa, nicho, analise.anguloEscolhido);
+
+  // If quality is low, try to improve it once
+  if (qualidade.score < 7) {
+    const melhorada = await melhorarMensagem(mensagem, qualidade.critica, empresa, nicho, systemPrompt);
+    return melhorada;
+  }
+
+  return mensagem;
+}
+
+// ─── Self-critique: evaluate message quality ──────────────────────────────────
+async function avaliarQualidadeMensagem(mensagem, empresa, nicho, angulo) {
+  const response = await openai.chat.completions.create({
+    model: MODEL_FAST,
+    messages: [
+      {
+        role: 'system',
+        content: 'Você é um especialista em copywriting para WhatsApp B2B. Avalie mensagens de prospecção. Retorne apenas JSON.',
+      },
+      {
+        role: 'user',
+        content: `Avalie esta mensagem de prospecção para a empresa "${empresa}" (nicho: ${nicho}, ângulo: ${angulo}):
+
+"${mensagem}"
+
+Critérios:
+1. Personalização real (não genérica)
+2. Clareza da proposta de valor
+3. Tom natural para WhatsApp (não robotizado)
+4. Tem call-to-action claro
+5. Tamanho adequado (não longo demais)
+
+Retorne JSON: { "score": <1-10>, "critica": "<o que melhorar em 1 frase>" }`,
+      },
+    ],
+    temperature: 0,
+    response_format: { type: 'json_object' },
+  });
+
+  try {
+    return JSON.parse(response.choices[0].message.content);
+  } catch {
+    return { score: 8, critica: '' };
+  }
+}
+
+// ─── Improve message based on critique ───────────────────────────────────────
+async function melhorarMensagem(mensagemOriginal, critica, empresa, nicho, systemPrompt) {
+  const response = await openai.chat.completions.create({
+    model: MODEL_WRITING,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Reescreva esta mensagem para a empresa "${empresa}" (nicho: ${nicho}), corrigindo o seguinte problema:
+PROBLEMA: ${critica}
+
+MENSAGEM ORIGINAL:
+"${mensagemOriginal}"
+
+Escreva apenas a mensagem reescrita, sem explicações.`,
+      },
+    ],
+    temperature: 0.6,
+    max_tokens: 300,
   });
 
   return response.choices[0].message.content.trim();
 }
 
-async function gerarMensagemAB(empresa, nicho, contexto, perfil) {
+// ─── A/B message generation ──────────────────────────────────────────────────
+async function gerarMensagemAB(empresa, nicho, contexto, perfil, dadosEmpresa = {}) {
   const [a, b] = await Promise.all([
-    gerarMensagem(empresa, nicho, contexto, perfil, 'a'),
-    gerarMensagem(empresa, nicho, contexto, perfil, 'b'),
+    gerarMensagem(empresa, nicho, contexto, perfil, 'a', dadosEmpresa),
+    gerarMensagem(empresa, nicho, contexto, perfil, 'b', dadosEmpresa),
   ]);
   return { a, b };
 }
 
+// ─── Lead scoring ─────────────────────────────────────────────────────────────
 async function calcularScore(empresa) {
   const { rating = 0, review_count = 0, website, nicho } = empresa;
 
-  // Rating score (0-5 -> 0-30)
   const ratingScore = Math.round((rating / 5) * 30);
 
-  // Review count score
   let reviewScore = 0;
   if (review_count >= 200) reviewScore = 30;
   else if (review_count >= 100) reviewScore = 20;
   else if (review_count >= 50) reviewScore = 10;
-  else if (review_count >= 10) reviewScore = 0;
+  else if (review_count >= 10) reviewScore = 5;
 
-  // Website score
   const websiteScore = website ? 25 : 0;
 
-  // AI relevance score (0-15)
-  let aiRelevanceScore = 0;
+  let aiRelevanceScore = 7; // neutral default
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: MODEL_FAST,
       messages: [
         {
           role: 'system',
-          content:
-            'You are a sales qualification assistant. Rate how suitable a business niche is for digital marketing / WhatsApp prospecting services. Return only a JSON object with a single field "score" (integer 0-15).',
+          content: 'You are a sales qualification assistant. Return only JSON.',
         },
         {
           role: 'user',
-          content: `Rate the niche "${nicho}" for digital marketing prospecting suitability. Consider: online presence potential, typical marketing budget availability, and receptiveness to new clients. Return JSON: {"score": <0-15>}`,
+          content: `Rate the niche "${nicho}" for WhatsApp B2B prospecting suitability (marketing budget availability, online presence potential, receptiveness to new services). Return JSON: {"score": <0-15>}`,
         },
       ],
       temperature: 0,
       response_format: { type: 'json_object' },
     });
     const parsed = JSON.parse(response.choices[0].message.content);
-    aiRelevanceScore = Math.max(0, Math.min(15, parseInt(parsed.score, 10) || 0));
+    aiRelevanceScore = Math.max(0, Math.min(15, parseInt(parsed.score, 10) || 7));
   } catch (err) {
     console.error('[aiService] calcularScore AI relevance error:', err.message);
-    aiRelevanceScore = 7; // neutral fallback
   }
 
-  const score = ratingScore + reviewScore + websiteScore + aiRelevanceScore;
-
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, ratingScore + reviewScore + websiteScore + aiRelevanceScore),
     breakdown: {
       rating: ratingScore,
-      review_count: reviewScore,
+      reviews: reviewScore,
       website: websiteScore,
-      ai_relevance: aiRelevanceScore,
+      nicho_fit: aiRelevanceScore,
     },
   };
 }
 
+// ─── Response analysis (deep) ─────────────────────────────────────────────────
 async function analisarResposta(mensagemOriginal, resposta) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: MODEL_FAST,
     messages: [
       {
         role: 'system',
-        content:
-          'Você é um assistente de análise de respostas de prospecção B2B via WhatsApp. Retorne apenas JSON.',
+        content: `Você é um especialista em análise de conversas de prospecção B2B via WhatsApp.
+Analise a resposta do lead e retorne um JSON detalhado. Seja preciso — análise errada leva à abordagem errada.`,
       },
       {
         role: 'user',
         content: `Mensagem enviada: "${mensagemOriginal}"
-Resposta recebida: "${resposta}"
+Resposta do lead: "${resposta}"
 
-Classifique a resposta e sugira a próxima ação. Retorne JSON no formato:
+Retorne JSON com:
 {
-  "classificacao": "interessado" | "nao_interessado" | "pedir_mais_info",
-  "sugestao": "<string com a próxima ação sugerida>"
-}`,
+  "classificacao": "interessado" | "muito_interessado" | "nao_interessado" | "pedir_mais_info" | "agendar",
+  "sentimento": "positivo" | "neutro" | "negativo",
+  "urgencia": "alta" | "media" | "baixa",
+  "objecao": null | "preco" | "tempo" | "nao_precisa" | "pessoa_errada" | "ja_tem_fornecedor",
+  "sinal_de_compra": true | false,
+  "sugestao": "<próxima ação em 1 frase concreta>"
+}
+
+Regras:
+- "muito_interessado": lead perguntou preço, pediu reunião, demonstrou urgência
+- "interessado": lead respondeu positivamente mas sem urgência clara
+- "pedir_mais_info": lead quer entender melhor antes de decidir
+- "agendar": lead mencionou explicitamente reunião, call ou agenda
+- "nao_interessado": resposta negativa clara ou ignorou a proposta`,
       },
     ],
-    temperature: 0.3,
+    temperature: 0.1,
     response_format: { type: 'json_object' },
   });
 
@@ -128,47 +316,72 @@ Classifique a resposta e sugira a próxima ação. Retorne JSON no formato:
     parsed = {};
   }
 
-  const validClassificacoes = ['interessado', 'nao_interessado', 'pedir_mais_info'];
+  const validClassificacoes = ['interessado', 'muito_interessado', 'nao_interessado', 'pedir_mais_info', 'agendar'];
   if (!validClassificacoes.includes(parsed.classificacao)) {
     parsed.classificacao = 'pedir_mais_info';
   }
 
   return {
     classificacao: parsed.classificacao,
+    sentimento: parsed.sentimento || 'neutro',
+    urgencia: parsed.urgencia || 'media',
+    objecao: parsed.objecao || null,
+    sinal_de_compra: parsed.sinal_de_compra || false,
     sugestao: parsed.sugestao || '',
   };
 }
 
-async function gerarRespostaSugerida(mensagemOriginal, respostaLead, classificacao, perfil) {
-  const contextoClassif = {
-    interessado: 'O lead demonstrou interesse. Avance propondo uma reunião ou próximo passo concreto.',
-    pedir_mais_info: 'O lead quer mais informações. Responda de forma consultiva e termine com uma pergunta para engajar.',
-    nao_interessado: 'O lead não demonstrou interesse claro. Seja educado, deixe uma porta aberta e não insista.',
+// ─── Suggested reply (with conversation context) ──────────────────────────────
+async function gerarRespostaSugerida(mensagemOriginal, respostaLead, classificacao, perfil, analise = {}) {
+  const instrucoes = {
+    muito_interessado: 'Lead MUITO interessado. Proponha um horário de reunião/call CONCRETO agora. Seja direto e facilite o próximo passo.',
+    agendar: 'Lead quer marcar. Ofereça 2 opções de horário concretas (ex: "terça às 10h ou quinta às 15h?"). Não deixe em aberto.',
+    interessado: 'Lead interessado. Avance propondo o próximo passo — um diagnóstico gratuito, uma reunião rápida. Mantenha o momentum.',
+    pedir_mais_info: 'Lead quer mais informações. Responda de forma consultiva com 1-2 informações valiosas, depois faça uma pergunta para entender a necessidade específica.',
+    nao_interessado: 'Lead não interessado. Seja breve, educado, deixe uma porta aberta para o futuro. Não insista. Máximo 2 frases.',
   };
 
+  const instrucaoObjecao = {
+    preco: ' A objeção é PREÇO — não argumente valor agora. Pergunte o que seria viável ou proponha uma conversa sem compromisso.',
+    tempo: ' A objeção é TEMPO — seja empático. Proponha algo rápido (15 minutos) ou peça permissão para voltar em melhor momento.',
+    nao_precisa: ' O lead acha que não precisa — ajude-o a ver a oportunidade que está perdendo com uma pergunta reflexiva.',
+    pessoa_errada: ' Não é a pessoa certa — peça gentilmente quem seria o responsável por esse tipo de decisão.',
+    ja_tem_fornecedor: ' Já tem fornecedor — não ataque o concorrente. Mostre como você complementa ou supera em algo específico.',
+  };
+
+  const contextoObjecao = analise.objecao ? (instrucaoObjecao[analise.objecao] || '') : '';
+  const instrucao = (instrucoes[classificacao] || instrucoes.pedir_mais_info) + contextoObjecao;
+
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: MODEL_WRITING,
     messages: [
       {
         role: 'system',
-        content: `Você é ${perfil?.nome || 'um consultor'} da empresa ${perfil?.empresa || ''}. Tom: ${perfil?.tom_comunicacao || 'profissional'}. Escreva respostas curtas e naturais para WhatsApp, máximo 2 parágrafos.`,
+        content: `Você é ${perfil?.nome || 'um consultor'} da empresa "${perfil?.empresa || ''}".
+Tom: ${perfil?.tom_comunicacao || 'profissional'}.
+Escreva como uma pessoa real no WhatsApp — curto, natural, sem robotismo. Máximo 3 frases.`,
       },
       {
         role: 'user',
-        content: `Você enviou: "${mensagemOriginal}"
-O lead respondeu: "${respostaLead}"
-Classificação: ${classificacao}
-Orientação: ${contextoClassif[classificacao] || ''}
+        content: `CONVERSA:
+Você enviou: "${mensagemOriginal}"
+Lead respondeu: "${respostaLead}"
 
-Escreva uma resposta ideal para enviar ao lead agora.`,
+ANÁLISE: ${classificacao}${analise.urgencia ? ` | urgência: ${analise.urgencia}` : ''}${analise.objecao ? ` | objeção: ${analise.objecao}` : ''}
+
+INSTRUÇÃO: ${instrucao}
+
+Escreva a resposta ideal agora:`,
       },
     ],
-    temperature: 0.6,
+    temperature: 0.55,
+    max_tokens: 200,
   });
 
   return response.choices[0].message.content.trim();
 }
 
+// ─── Score with rules ─────────────────────────────────────────────────────────
 async function calcularScoreComRegras(lead, rules) {
   let bonus = 0;
   for (const rule of rules || []) {
@@ -177,9 +390,18 @@ async function calcularScoreComRegras(lead, rules) {
     if (rule.evento === 'respondeu' && lead.status === 'respondeu') bonus += rule.pontos;
     if (rule.evento === 'classificado_interessado' && lead.classificacao === 'interessado') bonus += rule.pontos;
     if (rule.evento === 'muito_interessado' && lead.classificacao === 'muito_interessado') bonus += rule.pontos;
+    if (rule.evento === 'agendar' && lead.classificacao === 'agendar') bonus += rule.pontos;
     if (rule.evento === 'respondeu_2x' && (lead.reply_count || 0) >= 2) bonus += rule.pontos;
+    if (rule.evento === 'sinal_de_compra' && lead.sinal_de_compra) bonus += rule.pontos;
   }
   return Math.min(100, (lead.score || 0) + bonus);
 }
 
-module.exports = { gerarMensagem, gerarMensagemAB, calcularScore, analisarResposta, gerarRespostaSugerida, calcularScoreComRegras };
+module.exports = {
+  gerarMensagem,
+  gerarMensagemAB,
+  calcularScore,
+  analisarResposta,
+  gerarRespostaSugerida,
+  calcularScoreComRegras,
+};

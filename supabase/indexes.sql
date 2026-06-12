@@ -10,3 +10,7 @@ CREATE INDEX IF NOT EXISTS idx_queue_campanha_id ON send_queue(campanha_id);
 CREATE INDEX IF NOT EXISTS idx_blacklist_telefone ON blacklist(telefone_normalizado);
 CREATE INDEX IF NOT EXISTS idx_interactions_lead_id ON interactions(lead_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_type ON interactions(type);
+
+-- New columns for rich AI analysis (run if not yet added)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_analise jsonb;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS sinal_de_compra boolean DEFAULT false;
