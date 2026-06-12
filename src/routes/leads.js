@@ -57,7 +57,9 @@ router.get('/', async (req, res) => {
   if (status) query = query.eq('status', status);
   if (kanban_stage) query = query.eq('kanban_stage', kanban_stage);
   if (search) {
-    query = query.or(`nome.ilike.%${search}%,telefone.ilike.%${search}%`);
+    // Escape special PostgREST characters to prevent query injection
+    const safe = search.replace(/[%_().,]/g, (c) => '\\' + c).slice(0, 100);
+    query = query.or(`nome.ilike.%${safe}%,telefone.ilike.%${safe}%`);
   }
   if (tag_id) {
     // filter leads that have this tag
@@ -77,14 +79,14 @@ router.get('/', async (req, res) => {
 
 // POST /
 router.post('/', async (req, res) => {
-  const { nome, telefone, campanha_id, ...rest } = req.body || {};
+  const { nome, telefone, campanha_id, endereco, email, nicho } = req.body || {};
   if (!nome || !telefone) {
     return res.status(400).json({ error: 'nome and telefone are required' });
   }
 
   const { data, error } = await supabase
     .from('leads')
-    .insert({ nome, telefone, campanha_id, ...rest, criado_em: new Date().toISOString() })
+    .insert({ nome, telefone, campanha_id, endereco, email, nicho, status: 'pendente', criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
     .select()
     .single();
 
@@ -175,6 +177,7 @@ router.post('/:id/disparar', async (req, res) => {
     .single();
 
   if (error || !lead) return res.status(404).json({ error: 'Lead not found' });
+  if (!lead.mensagem_gerada) return res.status(400).json({ error: 'Mensagem não gerada. Abra o lead e gere a mensagem antes de enviar.' });
 
   try {
     await evolutionService.enviarMensagem(lead.telefone, lead.mensagem_gerada);
@@ -319,14 +322,24 @@ router.post('/:id/blacklist', async (req, res) => {
 
 // GET /:id/timeline
 router.get('/:id/timeline', async (req, res) => {
-  const { data, error } = await supabase
-    .from('interactions')
-    .select('*')
-    .eq('lead_id', req.params.id)
-    .order('created_at', { ascending: false });
+  const [interactionsRes, notesRes] = await Promise.all([
+    supabase.from('interactions').select('type, payload, created_at')
+      .eq('lead_id', req.params.id).order('created_at', { ascending: false }).limit(100),
+    supabase.from('lead_notes').select('content, created_at')
+      .eq('lead_id', req.params.id).order('created_at', { ascending: false }),
+  ]);
 
-  if (error) return res.status(500).json({ error: error.message });
-  return res.json(data || []);
+  if (interactionsRes.error) return res.status(500).json({ error: interactionsRes.error.message });
+
+  const interactions = (interactionsRes.data || []).map((i) => ({
+    type: i.type, content: i.payload?.content || null, created_at: i.created_at,
+  }));
+  const notes = (notesRes.data || []).map((n) => ({
+    type: 'note', content: n.content, created_at: n.created_at,
+  }));
+
+  const timeline = [...interactions, ...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return res.json(timeline);
 });
 
 // POST /:id/score

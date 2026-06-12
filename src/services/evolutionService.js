@@ -97,10 +97,11 @@ async function resetDailyCounts() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Reset instances where last_reset_at is before today OR null (new instances)
   const { error } = await supabase
     .from('whatsapp_instances')
     .update({ daily_sent: 0, last_reset_at: new Date().toISOString() })
-    .lt('last_reset_at', today.toISOString());
+    .or(`last_reset_at.lt.${today.toISOString()},last_reset_at.is.null`);
 
   if (error) throw new Error(`resetDailyCounts: ${error.message}`);
 }

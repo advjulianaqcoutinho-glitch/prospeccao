@@ -27,8 +27,53 @@ const scoringRouter = require('./routes/scoring');
 const app = express();
 
 // ── Global middleware ────────────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json());
+// CORS: allow the production domain and localhost for development
+const allowedOrigins = [
+  'https://prospect.igorpachecoads.com.br',
+  'http://localhost:3000',
+  'http://localhost:8080',
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow server-to-server requests (no origin) and allowed origins
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '2mb' }));
+
+// ── Rate limiting (simple in-memory, no extra package needed) ────────────────
+const loginAttempts = new Map();
+function loginRateLimit(req, res, next) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const window = 15 * 60 * 1000; // 15 minutes
+  const maxAttempts = 10;
+
+  const entry = loginAttempts.get(ip) || { count: 0, firstAttempt: now };
+  if (now - entry.firstAttempt > window) {
+    // Reset window
+    loginAttempts.set(ip, { count: 1, firstAttempt: now });
+    return next();
+  }
+  entry.count++;
+  loginAttempts.set(ip, entry);
+
+  if (entry.count > maxAttempts) {
+    const retry = Math.ceil((window - (now - entry.firstAttempt)) / 1000 / 60);
+    return res.status(429).json({ error: `Muitas tentativas. Tente novamente em ${retry} minutos.` });
+  }
+  return next();
+}
+// Clean up old entries every hour
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [ip, entry] of loginAttempts) {
+    if (entry.firstAttempt < cutoff) loginAttempts.delete(ip);
+  }
+}, 60 * 60 * 1000);
 
 // ── Health check (no auth) ───────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -43,7 +88,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/auth', authRouter);
+app.use('/api/auth', loginRateLimit, authRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/campanhas', campanhasRouter);
 app.use('/api/leads', leadsRouter);

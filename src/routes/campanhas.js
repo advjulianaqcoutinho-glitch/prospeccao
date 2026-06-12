@@ -23,8 +23,8 @@ router.post('/', async (req, res) => {
   const {
     nome, nicho, cidade, limite, contexto,
     delay_min = 30, delay_max = 120,
-    warmup_enabled, business_hours_enabled,
-    business_hours_start, business_hours_end,
+    warmup_enabled, warmup_day_limit, warmup_max_limit,
+    business_hours_enabled, business_hours_start, business_hours_end,
     ab_testing_enabled, source, whatsapp_instance_id,
   } = req.body || {};
 
@@ -40,6 +40,8 @@ router.post('/', async (req, res) => {
       contexto,
       delay_min, delay_max,
       warmup_enabled: warmup_enabled || false,
+      warmup_day_limit: parseInt(warmup_day_limit) || 20,
+      warmup_max_limit: parseInt(warmup_max_limit) || 200,
       business_hours_enabled: business_hours_enabled || false,
       business_hours_start: parseInt(business_hours_start) || 8,
       business_hours_end: parseInt(business_hours_end) || 18,
@@ -142,15 +144,16 @@ router.post('/:id/disparar-massa', async (req, res) => {
   const delayMin = campanha.delay_min || 30;
   const delayMax = campanha.delay_max || 120;
   const bizEnabled = campanha.business_hours_enabled || false;
-  const bizStart = campanha.business_hours_start || '08:00';
-  const bizEnd = campanha.business_hours_end || '18:00';
+  // business_hours_start/end stored as integers (hours), e.g. 8 or 18
+  const bizStartH = parseInt(campanha.business_hours_start) || 8;
+  const bizEndH = parseInt(campanha.business_hours_end) || 18;
 
   let scheduled = new Date();
 
   function nextBusinessTime(dt) {
     if (!bizEnabled) return dt;
-    const [startH, startM] = bizStart.split(':').map(Number);
-    const [endH, endM] = bizEnd.split(':').map(Number);
+    const startH = bizStartH, startM = 0;
+    const endH = bizEndH, endM = 0;
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
     const dayMinutes = dt.getHours() * 60 + dt.getMinutes();
@@ -179,7 +182,9 @@ router.post('/:id/disparar-massa', async (req, res) => {
       campanha_id: req.params.id,
       scheduled_at: scheduled.toISOString(),
       status: 'pending',
-      criado_em: new Date().toISOString(),
+      type: 'initial',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
   });
 
