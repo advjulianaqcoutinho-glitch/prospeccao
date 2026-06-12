@@ -24,6 +24,11 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
       labels:
         - "traefik.enable=1"
         # Rota /api/*
@@ -34,6 +39,7 @@ services:
         - "traefik.http.routers.prospector-api.service=prospector-api"
         - "traefik.http.services.prospector-api.loadbalancer.server.port=3000"
         - "traefik.http.services.prospector-api.loadbalancer.passHostHeader=true"
+        - "traefik.http.services.prospector-api.loadbalancer.responseForwarding.flushInterval=100ms"
         # Rota WebSocket /socket
         - "traefik.http.routers.prospector-ws.entrypoints=websecure"
         - "traefik.http.routers.prospector-ws.rule=Host(`prospect.igorpachecoads.com.br`) && PathPrefix(`/socket`)"

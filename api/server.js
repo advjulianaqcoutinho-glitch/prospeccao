@@ -6,6 +6,12 @@ const { init: initCrons } = require('../src/jobs/cronJobs');
 const config = require('../src/config');
 
 const server = http.createServer(app);
+
+// 55s timeout — prevents Gateway Timeout (Traefik default is 60s)
+server.setTimeout(55000);
+server.keepAliveTimeout = 61000;
+server.headersTimeout = 62000;
+
 setupUpgrade(server);
 initCrons();
 

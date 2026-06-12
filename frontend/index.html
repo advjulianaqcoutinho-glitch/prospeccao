@@ -738,14 +738,27 @@ function logout() {
 }
 
 // ── API ───────────────────────────────────────────────────────────────────
-async function api(method, path, body) {
-  var opts = {method, headers:{'Content-Type':'application/json', ...(TOKEN ? {'Authorization':'Bearer '+TOKEN} : {})}};
+async function api(method, path, body, timeoutMs) {
+  var ctrl = new AbortController();
+  var tid = setTimeout(()=>ctrl.abort(), timeoutMs||20000);
+  var opts = {
+    method,
+    signal: ctrl.signal,
+    headers:{'Content-Type':'application/json', ...(TOKEN ? {'Authorization':'Bearer '+TOKEN} : {})}
+  };
   if (body) opts.body = JSON.stringify(body);
-  var r = await fetch('/api' + path, opts);
-  if (r.status === 401) { logout(); return null; }
-  var data = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(data.erro || data.error || 'Erro ' + r.status);
-  return data;
+  try {
+    var r = await fetch('/api' + path, opts);
+    clearTimeout(tid);
+    if (r.status === 401) { logout(); return null; }
+    var data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data.erro || data.error || 'Erro ' + r.status);
+    return data;
+  } catch(e) {
+    clearTimeout(tid);
+    if (e.name === 'AbortError') throw new Error('Tempo esgotado — servidor demorou demais');
+    throw e;
+  }
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
