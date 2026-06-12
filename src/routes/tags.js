@@ -23,7 +23,7 @@ router.post('/', async (req, res) => {
 
   const { data, error } = await supabase
     .from('tags')
-    .insert({ nome, cor, criado_em: new Date().toISOString() })
+    .insert({ nome, cor, created_at: new Date().toISOString() })
     .select()
     .single();
 

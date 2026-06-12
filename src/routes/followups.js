@@ -31,7 +31,8 @@ router.post('/campanhas/:campanhaId/followups', async (req, res) => {
       step_number,
       delay_hours,
       message_template,
-      criado_em: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -42,7 +43,7 @@ router.post('/campanhas/:campanhaId/followups', async (req, res) => {
 
 // PATCH /campanhas/:campanhaId/followups/:id
 router.patch('/campanhas/:campanhaId/followups/:id', async (req, res) => {
-  const updates = { ...req.body, atualizado_em: new Date().toISOString() };
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
   delete updates.id;
   delete updates.campanha_id;
 

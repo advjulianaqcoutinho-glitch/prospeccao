@@ -11,7 +11,7 @@ router.get('/instances', async (req, res) => {
   const { data, error } = await supabase
     .from('whatsapp_instances')
     .select('*')
-    .order('criado_em', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
   return res.json(data || []);
@@ -19,21 +19,20 @@ router.get('/instances', async (req, res) => {
 
 // POST /instances
 router.post('/instances', async (req, res) => {
-  const { nome, instance_name, api_url, api_key, daily_limit } = req.body || {};
-  if (!nome || !instance_name) {
-    return res.status(400).json({ error: 'nome and instance_name are required' });
+  const { display_name, instance_name, daily_limit } = req.body || {};
+  if (!instance_name) {
+    return res.status(400).json({ error: 'instance_name is required' });
   }
 
   const { data, error } = await supabase
     .from('whatsapp_instances')
     .insert({
-      nome,
+      display_name: display_name || instance_name,
       instance_name,
-      api_url,
-      api_key,
       daily_limit: daily_limit || 200,
-      ativo: true,
-      criado_em: new Date().toISOString(),
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -44,7 +43,7 @@ router.post('/instances', async (req, res) => {
 
 // PATCH /instances/:id
 router.patch('/instances/:id', async (req, res) => {
-  const updates = { ...req.body, atualizado_em: new Date().toISOString() };
+  const updates = { ...req.body, updated_at: new Date().toISOString() };
   delete updates.id;
 
   const { data, error } = await supabase
@@ -84,8 +83,8 @@ router.get('/status', async (req, res) => {
   const { data, error } = await supabase
     .from('whatsapp_instances')
     .select('*')
-    .eq('ativo', true)
-    .order('criado_em', { ascending: true })
+    .eq('active', true)
+    .order('created_at', { ascending: true })
     .limit(1)
     .single();
 

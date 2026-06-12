@@ -48,16 +48,15 @@ router.post('/evolution', async (req, res) => {
     // Insert inbound interaction
     await supabase.from('interactions').insert({
       lead_id: lead.id,
+      campanha_id: lead.campanha_id,
       type: 'response_received',
-      direction: 'inbound',
-      content: messageContent,
+      payload: { content: messageContent },
       created_at: now,
     });
 
-    // Update last_response_at
     await supabase
       .from('leads')
-      .update({ last_response_at: now, atualizado_em: now })
+      .update({ status: 'respondeu', atualizado_em: now })
       .eq('id', lead.id);
 
     // Async: analyze response and update classification
@@ -69,7 +68,6 @@ router.post('/evolution', async (req, res) => {
 
         await supabase.from('leads').update({
           classificacao: analise.classificacao,
-          sugestao_ia: analise.sugestao,
           atualizado_em: new Date().toISOString(),
         }).eq('id', lead.id);
 

@@ -99,7 +99,7 @@ router.get('/:id', async (req, res) => {
     supabase.from('interactions').select('*').eq('lead_id', req.params.id)
       .order('created_at', { ascending: false }).limit(20),
     supabase.from('lead_notes').select('*').eq('lead_id', req.params.id)
-      .order('criado_em', { ascending: false }),
+      .order('created_at', { ascending: false }),
     supabase.from('lead_tags').select('tag_id, tags(*)').eq('lead_id', req.params.id),
   ]);
 
@@ -184,8 +184,7 @@ router.post('/:id/disparar', async (req, res) => {
       supabase.from('interactions').insert({
         lead_id: lead.id,
         type: 'message_sent',
-        direction: 'outbound',
-        content: lead.mensagem_gerada,
+        payload: { content: lead.mensagem_gerada },
         created_at: now,
       }),
       supabase.from('leads').update({ status: 'enviado', enviado_em: now, atualizado_em: now }).eq('id', lead.id),
@@ -217,7 +216,8 @@ router.post('/:id/agendar', async (req, res) => {
       campanha_id: lead.campanha_id,
       scheduled_at,
       status: 'pending',
-      criado_em: new Date().toISOString(),
+      type: 'scheduled',
+      created_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -237,8 +237,7 @@ router.patch('/:id/kanban', async (req, res) => {
     supabase.from('interactions').insert({
       lead_id: req.params.id,
       type: 'stage_change',
-      direction: 'internal',
-      content: `Stage changed to: ${kanban_stage}`,
+      payload: { stage: kanban_stage },
       created_at: now,
     }),
   ]);
@@ -254,7 +253,7 @@ router.post('/:id/notes', async (req, res) => {
 
   const { data, error } = await supabase
     .from('lead_notes')
-    .insert({ lead_id: req.params.id, conteudo, criado_em: new Date().toISOString() })
+    .insert({ lead_id: req.params.id, content: conteudo, created_at: new Date().toISOString() })
     .select()
     .single();
 
@@ -311,7 +310,7 @@ router.post('/:id/blacklist', async (req, res) => {
   const now = new Date().toISOString();
 
   await Promise.all([
-    supabase.from('blacklist').insert({ telefone: lead.telefone, motivo, criado_em: now }),
+    supabase.from('blacklist').insert({ telefone: lead.telefone, telefone_normalizado: lead.telefone.replace(/\D/g, ''), motivo, created_at: now }),
     supabase.from('leads').update({ status: 'blacklisted', atualizado_em: now }).eq('id', req.params.id),
   ]);
 
@@ -388,7 +387,6 @@ router.post('/:id/analisar-resposta', async (req, res) => {
 
     await supabase.from('leads').update({
       classificacao: analise.classificacao,
-      sugestao_ia: analise.sugestao,
       atualizado_em: new Date().toISOString(),
     }).eq('id', req.params.id);
 
