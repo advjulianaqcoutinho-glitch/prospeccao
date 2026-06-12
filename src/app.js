@@ -34,6 +34,9 @@ app.use('/api', (req, res, next) => {
   return authMiddleware(req, res, next);
 });
 
+// ── Health check (no auth) ───────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/stats', statsRouter);
