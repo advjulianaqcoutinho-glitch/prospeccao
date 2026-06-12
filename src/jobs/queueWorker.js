@@ -65,7 +65,7 @@ async function processQueue() {
     // Fetch one pending queue item due for sending
     const { data: items, error: fetchErr } = await supabase
       .from('send_queue')
-      .select('*, campanhas(*), leads(*), mensagens(*)')
+      .select('*, campanhas(*), leads(*)')
       .eq('status', 'pending')
       .lte('scheduled_at', now)
       .limit(1);
