@@ -1111,6 +1111,13 @@ function handleWS(d) {
     var l2 = document.createElement('div');
     l2.textContent = '['+new Date().toLocaleTimeString()+'] '+(d.status==='sent'?'✅ Enviado para ':'❌ Falha: ')+esc(d.nome||'');
     log2.appendChild(l2); log2.scrollTop = log2.scrollHeight;
+    if (d.status==='sent') {
+      // Increment dashboard Enviados counter live
+      var envEl = document.getElementById('s-enviados');
+      if (envEl) { var cur = parseInt(envEl.textContent)||0; envEl.textContent = cur+1; }
+      // Also refresh full stats if on dashboard tab
+      if (document.getElementById('page-dashboard').classList.contains('active')) loadDash();
+    }
   }
 }
 
