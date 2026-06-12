@@ -818,6 +818,7 @@ async function loadLeads() {
     var empty = document.getElementById('leads-empty');
     if (!leads.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
     empty.style.display='none';
+    leads.forEach(l=>{ leadsCache[l.id]=l; });
     tbody.innerHTML = leads.map(l=>`<tr>
       <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.endereco||'')}</span></td>
       <td style="color:var(--text-m);font-size:12px">${esc(l.telefone)}</td>
@@ -826,7 +827,7 @@ async function loadLeads() {
       <td>${bdg(l.status)}</td>
       <td>${classifBadge(l.response_classification)}</td>
       <td><div class="td-actions">
-        <button class="btn btn-outline btn-xs" title="Mensagem" onclick="openMsgModal(${JSON.stringify(JSON.stringify(l))})">💬</button>
+        <button class="btn btn-outline btn-xs" title="Mensagem" onclick="openMsgModal('${l.id}')">💬</button>
         ${l.status!=='enviado'?`<button class="btn btn-primary btn-xs" title="Enviar" onclick="enviarAgora('${l.id}',this)">📤</button>`:''}
         <button class="btn btn-outline btn-xs" title="Agendar" onclick="openAgendar('${l.id}','${esc(l.nome)}')">📅</button>
         <button class="btn btn-outline btn-xs" title="Enriquecer" onclick="enriquecer('${l.id}',this)">🔍</button>
@@ -838,8 +839,10 @@ async function loadLeads() {
   } catch(e){toast('Erro leads: '+e.message,'error');}
 }
 
-function openMsgModal(leadJson) {
-  var l = JSON.parse(leadJson);
+var leadsCache = {};
+function openMsgModal(leadId) {
+  var l = leadsCache[leadId];
+  if (!l) return;
   currentLead = l; varianteAtiva='a';
   document.getElementById('msg-lead-id').value = l.id;
   document.getElementById('msg-lead-name').textContent = l.nome + (l.telefone?' — '+l.telefone:'');
