@@ -65,66 +65,57 @@ async function gerarMensagem(empresa, nicho, contexto, perfil, variante = 'a', d
   const { rating, review_count, website, cidade, endereco } = dadosEmpresa;
   const analise = analisarSinaisDeNegocio({ rating, review_count, website, cidade });
 
-  // Variant A: Curiosity hook (encontrei algo específico no seu perfil)
-  // Variant B: Social proof + opportunity (trabalho com lojas do setor e vi que...)
-  const estrutura = {
-    a: `ESTRUTURA DA MENSAGEM (siga rigorosamente):
-1. ABERTURA: "Oi, [nome do responsável ou tudo bem]! Sou o Igor, da Assessoria para Lojistas de Móveis." — natural, sem formalidade
-2. CONTEXTO: Em 1 frase: como encontrou a loja (Google, pesquisando em ${cidade || 'sua cidade'})
-3. OBSERVAÇÃO ESPECÍFICA: Mencione algo real e concreto que só quem olhou o perfil saberia — use os dados disponíveis (avaliações, site, posição no Maps)
-4. GANCHO: "Reparei em algo que pode estar fazendo vocês perderem clientes que já querem comprar..." — não entregue o que é
-5. CTA LEVE: Uma pergunta simples de baixo compromisso: "Posso te contar o que encontrei?" ou "Faz sentido conversar?"`,
+  // Build the middle line based on angle detected
+  const linhaValor = {
+    escala_qualidade: `Vi a ${empresa} no Google — vocês têm uma das melhores avaliações de planejados em ${cidade || 'sua cidade'}.
 
-    b: `ESTRUTURA DA MENSAGEM (siga rigorosamente):
-1. ABERTURA: "Oi! Sou o Igor, da Assessoria para Lojistas de Móveis." — direto
-2. CREDIBILIDADE: Em 1 frase: mencione que trabalha especificamente com lojas de planejados conectando-as a clientes qualificados
-3. OBSERVAÇÃO: Algo específico sobre a loja baseado nos dados reais disponíveis
-4. PROPOSTA IMPLÍCITA: "Tenho um perfil de cliente que está ativamente buscando planejados em ${cidade || 'sua cidade'} agora — pessoa em obra, prazo definido — e achei que vocês seriam um bom fit."
-5. CTA LEVE: "Você toparia entender como funciona o Método Projeto Fechado?"`,
+Trabalho conectando lojas com esse nível de reputação a pessoas que estão em obra agora — clientes que já decidiram comprar e só precisam encontrar a loja certa.`,
+
+    crescimento: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
+
+Tenho trabalhado com lojas do setor para conectá-las com pessoas que estão ativamente em obra ou reforma — clientes que já decidiram comprar, só ainda não escolheram onde.`,
+
+    visibilidade: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
+
+Reparei que vocês podem estar perdendo clientes que estão em obra agora — pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
+
+    presenca_digital: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
+
+Reparei que vocês podem estar perdendo clientes que estão em obra agora — pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
   };
+
+  const corpo = linhaValor[analise.anguloEscolhido] || linhaValor.crescimento;
 
   const systemPrompt = `Você é Igor, fundador da Assessoria para Lojistas de Móveis e criador do Método Projeto Fechado.
 
-O QUE VOCÊ FAZ:
-Você conecta lojas de móveis planejados a clientes qualificados — pessoas que estão ativamente em obra ou reforma, com prazo e budget definidos para fechar o projeto. Não é lead genérico: é cliente que já decidiu comprar, só ainda não escolheu onde.
-
-POSICIONAMENTO:
-- Assessoria para Lojistas de Móveis (nome do serviço)
-- Método Projeto Fechado (nome do processo/método)
-- Foco exclusivo em móveis planejados — você conhece o setor
-
-TOM:
-- Humano, direto, sem formalidade excessiva
-- Curioso e respeitoso — não invasivo
-- Confiante mas não arrogante
-- Como alguém que pesquisou e quer ajudar, não como vendedor
+ESTRUTURA OBRIGATÓRIA DA MENSAGEM (3 blocos curtos):
+1. "Oi, meu nome é Igor! [contexto de como encontrou a loja — 1 frase]"
+2. [linha de valor específica ao perfil da loja — 2 frases]
+3. "Você toparia entender como funciona?"
 
 REGRAS ABSOLUTAS — NUNCA QUEBRE:
-- Máximo 5 frases. WhatsApp não é e-mail.
-- NUNCA entregue o pitch completo. A primeira mensagem só deve gerar curiosidade e uma resposta.
-- NUNCA use palavras: "prospecção", "tráfego pago", "leads", "marketing digital", "impulsionar"
-- NUNCA prometa resultados numéricos na primeira mensagem
-- NUNCA use emojis (parece robô)
-- Escreva como uma pessoa real escreveria no WhatsApp
-- A mensagem deve parecer escrita à mão para essa loja específica — não copiada`;
+- Siga a estrutura acima rigorosamente. Não invente outra estrutura.
+- Máximo 5 frases no total. WhatsApp não é e-mail.
+- NUNCA entregue o que você faz por completo — gere curiosidade, não explique tudo.
+- NUNCA use: "prospecção", "tráfego pago", "leads", "marketing digital", "impulsionar", "anúncios"
+- NUNCA use emojis
+- NUNCA prometa resultados numéricos
+- Escreva como uma pessoa real escreveria no WhatsApp — natural, sem formalidade excessiva
+- A mensagem deve parecer escrita especificamente para essa loja`;
 
-  const userPrompt = `LOJA-ALVO: "${empresa}"
+  const userPrompt = `LOJA: "${empresa}"
 CIDADE: ${cidade || 'não informada'}
-AVALIAÇÃO NO GOOGLE: ${rating ? `${rating}★ com ${review_count || 0} avaliações` : 'sem dados'}
+${endereco ? `BAIRRO/ENDEREÇO: ${endereco}` : ''}
+AVALIAÇÃO: ${rating ? `${rating}★ com ${review_count || 0} avaliações` : 'sem dados'}
 SITE: ${website || 'sem site'}
-${endereco ? `ENDEREÇO: ${endereco}` : ''}
+ÂNGULO DETECTADO: ${analise.anguloEscolhido}
 
-ANÁLISE DOS SINAIS DA LOJA:
-${analise.sinais.map(s => `• ${s}`).join('\n')}
+Use exatamente esta linha de valor no bloco 2 (adapte apenas se soar antinatural):
+---
+${corpo}
+---
 
-ÂNGULO ESCOLHIDO: ${analise.anguloEscolhido}
-COMO ABORDAR: ${analise.instrucaoAngulo}
-
-${contexto ? `CONTEXTO ADICIONAL: ${contexto}` : ''}
-
-${estrutura[variante] || estrutura.a}
-
-Escreva APENAS o texto da mensagem. Nada mais.`;
+Escreva APENAS o texto final da mensagem. Nada mais.`;
 
   const response = await openai.chat.completions.create({
     model: MODEL_WRITING,
@@ -132,13 +123,12 @@ Escreva APENAS o texto da mensagem. Nada mais.`;
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    temperature: variante === 'b' ? 0.7 : 0.6,
-    max_tokens: 250,
+    temperature: 0.4,
+    max_tokens: 220,
   });
 
   const mensagem = response.choices[0].message.content.trim();
 
-  // Self-critique
   const qualidade = await avaliarQualidadeMensagem(mensagem, empresa, analise.anguloEscolhido);
   if (qualidade.score < 7) {
     return await melhorarMensagem(mensagem, qualidade.critica, empresa, systemPrompt);
