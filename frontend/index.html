@@ -318,6 +318,18 @@ textarea{resize:vertical;min-height:72px}
           <a href="/api/leads/export" id="export-btn" class="btn btn-outline btn-sm">⬇ Exportar CSV</a>
         </div>
       </div>
+      <!-- Selection action bar -->
+      <div id="leads-action-bar" style="display:none;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+        <span id="leads-sel-count" style="font-size:13px;font-weight:600;color:var(--purple-l)">0 selecionados</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="selecionarPorScore(70)">⭐ Score ≥ 70</button>
+          <button class="btn btn-outline btn-sm" onclick="selecionarPorScore(40)">Score ≥ 40</button>
+          <button class="btn btn-outline btn-sm" onclick="limparSelecao()">✕ Limpar</button>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="dispararSelecionados()">📤 Disparar selecionados</button>
+        </div>
+      </div>
       <div class="filters">
         <select id="f-camp" onchange="loadLeads()"><option value="">Todas as campanhas</option></select>
         <select id="f-status" onchange="loadLeads()"><option value="">Todos os status</option><option>pendente</option><option>enviado</option><option>agendado</option><option>blacklisted</option></select>
@@ -327,7 +339,7 @@ textarea{resize:vertical;min-height:72px}
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div class="table-wrap"><table>
-          <thead><tr><th>Nome</th><th>Telefone</th><th>Score</th><th>Estágio</th><th>Status</th><th>Classificação</th><th>Ações</th></tr></thead>
+          <thead><tr><th style="width:36px"><input type="checkbox" id="leads-select-all" onchange="toggleSelecionarTodos(this)" style="width:auto;cursor:pointer"></th><th>Nome</th><th>Telefone</th><th>Score</th><th>Estágio</th><th>Status</th><th>Classificação</th><th>Ações</th></tr></thead>
           <tbody id="leads-tbody"></tbody>
         </table></div>
         <div id="leads-empty" class="empty" style="display:none"><div class="empty-icon">👥</div><p>Nenhum lead encontrado</p></div>
@@ -1154,7 +1166,7 @@ async function loadCampanhas() {
       <td>${bdg(c.status)}</td>
       <td style="font-size:11px;color:var(--text-m)">${fmt(c.criado_em)}</td>
       <td><div class="td-actions">
-        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-warning btn-xs" onclick="openModal('modal-prospeccao-live')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
+        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-xs" onclick="abrirPainelAoVivo('${c.id}')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
         <button class="btn btn-success btn-xs" onclick="dispararMassa('${c.id}',this)">📤 Massa</button>
         <button class="btn btn-outline btn-xs" onclick="openFollowup('${c.id}')">📅 FU</button>
         <button class="btn btn-danger btn-xs" onclick="abrirModalArquivar('${c.id}')">🗑</button>
@@ -1191,29 +1203,52 @@ async function criarCampanha(btn) {
   btn.disabled=false;btn.innerHTML='Criar Campanha';
 }
 
+function initLiveModal(campanha, initialSalvos) {
+  liveState = { active: true, lastUpdate: Date.now(), stuckTimer: null, erros: 0 };
+  var salvos = initialSalvos || 0;
+  document.getElementById('live-stat-salvos').textContent = salvos;
+  document.getElementById('live-stat-processados').textContent = salvos;
+  document.getElementById('live-stat-total').textContent = campanha.limite || '–';
+  document.getElementById('live-stat-erros').textContent = '0';
+  document.getElementById('live-bar').style.width = salvos && campanha.limite ? Math.round(salvos/campanha.limite*100)+'%' : '0';
+  document.getElementById('live-counter').textContent = salvos + ' / ' + (campanha.limite||'?');
+  document.getElementById('live-step-label').textContent = initialSalvos > 0 ? 'Extração em andamento...' : 'Iniciando o extrator...';
+  if (initialSalvos > 0) {
+    document.getElementById('live-leads-feed').innerHTML = '<div style="color:var(--text-d);font-size:12px;text-align:center;padding:12px">'+salvos+' leads já extraídos. Novos resultados aparecerão aqui.</div>';
+  } else {
+    document.getElementById('live-leads-feed').innerHTML = '<div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px" data-placeholder>Aguardando o primeiro resultado...</div>';
+  }
+  document.getElementById('live-finish-msg').textContent = '';
+  document.getElementById('live-finish-msg').style.color = '';
+  document.getElementById('live-ver-leads-btn').style.display = 'none';
+  document.getElementById('live-stuck-alert').style.display = 'none';
+  document.getElementById('live-status-dot').style.cssText = 'width:10px;height:10px;border-radius:50%;background:var(--yellow);display:inline-block;animation:pulse 1.5s infinite';
+  document.getElementById('live-title').textContent = 'Prospecção em andamento';
+  document.getElementById('live-campanha-nome').textContent = campanha.nome ? '📍 '+esc(campanha.nome)+' — '+esc(campanha.nicho||'')+' em '+esc(campanha.cidade||'') : '';
+}
+
+async function abrirPainelAoVivo(id) {
+  var campanha = campanhas.find(c=>c.id===id) || { id };
+  // Fetch current lead count so panel shows real progress
+  var salvosAtual = 0;
+  try {
+    var resp = await api('GET','/leads?campanha_id='+id+'&limit=1');
+    // Just need the count — use the leads array length isn't ideal but works for now
+    var allLeads = await api('GET','/leads?campanha_id='+id+'&limit=5000');
+    salvosAtual = Array.isArray(allLeads) ? allLeads.length : 0;
+  } catch(e) {}
+  initLiveModal(campanha, salvosAtual);
+  openModal('modal-prospeccao-live');
+  startStuckWatcher();
+}
+
 async function prospectar(id, btn) {
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
   try {
     var campanha = campanhas.find(c=>c.id===id) || {};
-    // Pre-open the modal in "waiting" state
-    liveState = { active: true, lastUpdate: Date.now(), stuckTimer: null, erros: 0 };
-    document.getElementById('live-stat-salvos').textContent = '0';
-    document.getElementById('live-stat-processados').textContent = '0';
-    document.getElementById('live-stat-total').textContent = '–';
-    document.getElementById('live-stat-erros').textContent = '0';
-    document.getElementById('live-bar').style.width = '0';
-    document.getElementById('live-counter').textContent = '0 / 0';
-    document.getElementById('live-step-label').textContent = 'Iniciando o extrator...';
-    document.getElementById('live-leads-feed').innerHTML = '<div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px" data-placeholder>Aguardando o primeiro resultado...</div>';
-    document.getElementById('live-finish-msg').textContent = '';
-    document.getElementById('live-ver-leads-btn').style.display = 'none';
-    document.getElementById('live-stuck-alert').style.display = 'none';
-    document.getElementById('live-status-dot').style.cssText = 'width:10px;height:10px;border-radius:50%;background:var(--yellow);display:inline-block;animation:pulse 1.5s infinite';
-    document.getElementById('live-title').textContent = 'Prospecção em andamento';
-    document.getElementById('live-campanha-nome').textContent = campanha.nome ? '📍 '+campanha.nicho+' · '+campanha.cidade : '';
+    initLiveModal(campanha, 0);
     openModal('modal-prospeccao-live');
     startStuckWatcher();
-
     await api('POST','/campanhas/'+id+'/prospectar');
     toast('Prospecção iniciada!','success');
     loadCampanhas();
@@ -1221,26 +1256,24 @@ async function prospectar(id, btn) {
     toast('Erro: '+e.message,'error');
     closeModal('modal-prospeccao-live');
   }
-  btn.disabled=false;btn.innerHTML='🔍';
+  btn.disabled=false;btn.innerHTML='🔍 Extrair';
 }
 
 // ── Dispatch Wizard ───────────────────────────────────────────────────────
 var dwCurrentStep = 1;
 var dwLeadsCount = 0;
 var dwCampanha = null;
+var dwSelectedLeadIds = null; // null = all pending, array = specific leads
 
 async function dispararMassa(id, btn) {
-  // Load campanha details and pending leads count
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
   try {
     var camp = campanhas.find(c=>c.id===id);
     dwCampanha = camp || {};
+    dwSelectedLeadIds = null; // massa = todos pendentes
     var leads = await api('GET','/leads?campanha_id='+id+'&status=pendente&limit=5000') || [];
-    dwLeadsCount = Array.isArray(leads) ? leads.length : (leads.data ? leads.data.length : 0);
-    // If leads is object with data array
-    if (!Array.isArray(leads) && leads && leads.length !== undefined) dwLeadsCount = leads.length;
+    dwLeadsCount = Array.isArray(leads) ? leads.length : 0;
     document.getElementById('dw-campanha-id').value = id;
-    // Pre-fill delay from campanha
     if (camp) {
       document.getElementById('dw-dmin').value = camp.delay_min || 30;
       document.getElementById('dw-dmax').value = camp.delay_max || 180;
@@ -1343,7 +1376,7 @@ function dwBuildResume() {
   var bizStart = parseInt(camp.business_hours_start)||8;
   var bizEnd = parseInt(camp.business_hours_end)||18;
   document.getElementById('dw-resumo').innerHTML = `
-    <div>🎯 <strong>${dwLeadsCount}</strong> leads pendentes serão contactados</div>
+    <div>🎯 <strong>${dwLeadsCount}</strong> leads ${dwSelectedLeadIds?'<span style="color:var(--purple-l)">(selecionados manualmente)</span>':'pendentes'} serão contactados</div>
     <div>📅 Até <strong>${daily}</strong> mensagens por dia</div>
     <div>⏱ Intervalos entre <strong>${dmin}s</strong> e <strong>${dmax}s</strong> (aleatório)</div>
     ${camp.business_hours_enabled?`<div>🕐 Somente entre <strong>${bizStart}:00</strong> e <strong>${bizEnd}:00</strong></div>`:''}
@@ -1360,8 +1393,12 @@ async function dwConfirmar(btn) {
   var dmax = parseInt(document.getElementById('dw-dmax').value)||180;
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
   try {
-    var r = await api('POST','/campanhas/'+id+'/disparar-massa',{daily_limit:daily,delay_min:dmin,delay_max:dmax});
+    var body = {daily_limit:daily, delay_min:dmin, delay_max:dmax};
+    if (dwSelectedLeadIds && dwSelectedLeadIds.length) body.lead_ids = dwSelectedLeadIds;
+    var r = await api('POST','/campanhas/'+id+'/disparar-massa', body);
     closeModal('modal-disparar-wizard');
+    dwSelectedLeadIds = null;
+    limparSelecao();
     toast('✅ '+(r.queued||0)+' mensagens agendadas com segurança!','success');
     loadSafetyWidget();
   } catch(e){toast('Erro: '+e.message,'error');}
@@ -1554,7 +1591,8 @@ async function loadLeads() {
     if (!leads.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
     empty.style.display='none';
     leads.forEach(l=>{ leadsCache[l.id]=l; });
-    tbody.innerHTML = leads.map(l=>`<tr>
+    tbody.innerHTML = leads.map(l=>`<tr data-lead-id="${l.id}" data-score="${l.score||0}" data-status="${l.status}" data-campanha="${l.campanha_id||''}">
+      <td><input type="checkbox" class="lead-cb" value="${l.id}" onchange="onLeadCbChange()" style="width:auto;cursor:pointer"></td>
       <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.endereco||'')}</span></td>
       <td style="color:var(--text-m);font-size:12px">${esc(l.telefone)}</td>
       <td>${scoreBadge(l.score)}</td>
@@ -1563,7 +1601,7 @@ async function loadLeads() {
       <td>${classifBadge(l.classificacao)}</td>
       <td><div class="td-actions">
         <button class="btn btn-outline btn-xs" title="Mensagem" onclick="openMsgModal('${l.id}')">💬</button>
-        ${l.status!=='enviado'?`<button class="btn btn-primary btn-xs" title="Enviar" onclick="enviarAgora('${l.id}',this)">📤</button>`:''}
+        ${l.status!=='enviado'?`<button class="btn btn-primary btn-xs" title="Enviar agora" onclick="enviarAgora('${l.id}',this)">📤</button>`:''}
         <button class="btn btn-outline btn-xs" title="Agendar" onclick="openAgendar('${l.id}','${esc(l.nome)}')">📅</button>
         <button class="btn btn-outline btn-xs" title="Enriquecer" onclick="enriquecer('${l.id}',this)">🔍</button>
         <button class="btn btn-outline btn-xs" title="Tags" onclick="openTags('${l.id}')">🏷️</button>
@@ -1574,7 +1612,70 @@ async function loadLeads() {
   } catch(e){toast('Erro leads: '+e.message,'error');}
 }
 
+// ── Lead selection ────────────────────────────────────────────────────────
 var leadsCache = {};
+
+function getLeadsCbs() { return [...document.querySelectorAll('.lead-cb')]; }
+function getSelectedIds() { return getLeadsCbs().filter(c=>c.checked).map(c=>c.value); }
+
+function onLeadCbChange() {
+  var ids = getSelectedIds();
+  var bar = document.getElementById('leads-action-bar');
+  var all = document.getElementById('leads-select-all');
+  var cbs = getLeadsCbs();
+  bar.style.display = ids.length > 0 ? 'flex' : 'none';
+  document.getElementById('leads-sel-count').textContent = ids.length + ' selecionado' + (ids.length!==1?'s':'');
+  all.indeterminate = ids.length > 0 && ids.length < cbs.length;
+  all.checked = ids.length > 0 && ids.length === cbs.length;
+}
+
+function toggleSelecionarTodos(cb) {
+  getLeadsCbs().forEach(c=>c.checked=cb.checked);
+  onLeadCbChange();
+}
+
+function selecionarPorScore(minScore) {
+  getLeadsCbs().forEach(c=>{
+    var row = c.closest('tr');
+    var score = parseInt(row?.dataset.score)||0;
+    c.checked = score >= minScore;
+  });
+  onLeadCbChange();
+}
+
+function limparSelecao() {
+  getLeadsCbs().forEach(c=>c.checked=false);
+  var all = document.getElementById('leads-select-all');
+  if (all) { all.checked=false; all.indeterminate=false; }
+  onLeadCbChange();
+}
+
+async function dispararSelecionados() {
+  var ids = getSelectedIds();
+  if (!ids.length) { toast('Selecione pelo menos um lead','error'); return; }
+
+  // Determine campanha_id (can be mixed — pick first lead's campanha)
+  var firstRow = document.querySelector('.lead-cb:checked')?.closest('tr');
+  var campId = firstRow?.dataset.campanha;
+  if (!campId) { toast('Não foi possível identificar a campanha','error'); return; }
+
+  // Check all selected belong to same campanha
+  var allSameCamp = [...document.querySelectorAll('.lead-cb:checked')].every(c=>c.closest('tr').dataset.campanha===campId);
+  if (!allSameCamp) { toast('Selecione leads de apenas uma campanha por vez','error'); return; }
+
+  var camp = campanhas.find(c=>c.id===campId) || {};
+  dwCampanha = camp;
+  dwLeadsCount = ids.length;
+  dwSelectedLeadIds = ids;
+  document.getElementById('dw-campanha-id').value = campId;
+  if (camp) {
+    document.getElementById('dw-dmin').value = camp.delay_min || 30;
+    document.getElementById('dw-dmax').value = camp.delay_max || 180;
+  }
+  dwGoStep(1);
+  dwUpdateRisk();
+  openModal('modal-disparar-wizard');
+}
 function openMsgModal(leadId) {
   var l = leadsCache[leadId];
   if (!l) return;

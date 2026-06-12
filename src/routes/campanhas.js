@@ -245,17 +245,24 @@ router.post('/:id/disparar-massa', async (req, res) => {
 
   if (campanhaErr || !campanha) return res.status(404).json({ error: 'Campanha not found' });
 
-  const { data: leads, error: leadsErr } = await supabase
+  const leadIds = Array.isArray(req.body.lead_ids) && req.body.lead_ids.length > 0
+    ? req.body.lead_ids : null;
+
+  let leadsQuery = supabase
     .from('leads')
     .select('id, telefone')
     .eq('campanha_id', req.params.id)
     .eq('status', 'pendente');
 
+  if (leadIds) leadsQuery = leadsQuery.in('id', leadIds);
+
+  const { data: leads, error: leadsErr } = await leadsQuery;
+
   if (leadsErr) return res.status(500).json({ error: leadsErr.message });
   if (!leads || leads.length === 0) return res.json({ queued: 0 });
 
-  const delayMin = campanha.delay_min || 30;
-  const delayMax = campanha.delay_max || 120;
+  const delayMin = parseInt(req.body.delay_min) || campanha.delay_min || 30;
+  const delayMax = parseInt(req.body.delay_max) || campanha.delay_max || 120;
   const bizEnabled = campanha.business_hours_enabled || false;
   const bizStartH = parseInt(campanha.business_hours_start) || 8;
   const bizEndH = parseInt(campanha.business_hours_end) || 18;

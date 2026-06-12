@@ -13,7 +13,8 @@ async function processFollowups() {
       .from('leads')
       .select('*')
       .lte('next_followup_at', now)
-      .eq('status', 'enviado');
+      .eq('status', 'enviado')
+      .not('classificacao', 'in', '("nao_interessado","blacklisted")');
 
     if (leadsErr) { console.error('[followupWorker] fetch error:', leadsErr.message); return; }
     if (!leads || leads.length === 0) return;
