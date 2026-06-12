@@ -232,8 +232,14 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
 // Execute when called as a child process
 const args = process.argv.slice(2);
 if (args.length > 0) {
-  const params = JSON.parse(args[0]);
-  executarProspeccao(params);
+  const campanha = JSON.parse(args[0]);
+  executarProspeccao({
+    campanhaId: campanha.campanhaId || campanha.id,
+    nicho: campanha.nicho,
+    cidade: campanha.cidade,
+    limite: campanha.limite,
+    contexto: campanha.contexto,
+  });
 }
 
 module.exports = { executarProspeccao, normalizePhone };
