@@ -68,11 +68,23 @@ router.delete('/instances/:id', async (req, res) => {
   return res.status(204).send();
 });
 
-// GET /instances/:id/status
+// GET /instances/:id/status — checks Evolution API and persists result
 router.get('/instances/:id/status', async (req, res) => {
   try {
-    const status = await evolutionService.checkStatus(req.params.id);
-    return res.json(status);
+    const statusData = await evolutionService.checkStatus(req.params.id);
+    // Evolution API returns { instance: { state: 'open'|'close'|'connecting' } }
+    const state = statusData?.instance?.state || statusData?.state || 'unknown';
+    const isConnected = state === 'open';
+
+    await supabase
+      .from('whatsapp_instances')
+      .update({
+        status: isConnected ? 'connected' : 'disconnected',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id);
+
+    return res.json({ ...statusData, resolved_status: isConnected ? 'connected' : 'disconnected' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

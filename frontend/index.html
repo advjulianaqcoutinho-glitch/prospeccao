@@ -319,7 +319,7 @@ textarea{resize:vertical;min-height:72px}
         </div>
       </div>
       <!-- Selection action bar -->
-      <div id="leads-action-bar" style="display:none;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+      <div id="leads-action-bar" style="display:none;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.3);border-radius:10px;padding:10px 16px;margin-bottom:12px;align-items:center;gap:12px;flex-wrap:wrap">
         <span id="leads-sel-count" style="font-size:13px;font-weight:600;color:var(--purple-l)">0 selecionados</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" onclick="selecionarPorScore(70)">⭐ Score ≥ 70</button>
@@ -1911,39 +1911,51 @@ async function loadWAInstances() {
   try {
     var inst=await api('GET','/whatsapp/instances')||[];
     var el=document.getElementById('wa-instances-list');
-    if(!inst.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">💬</div><p>Nenhuma instância configurada</p></div>';return;}
-    el.innerHTML=inst.map(i=>`
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-          <div>
-            <div style="font-weight:600">${esc(i.nome)}</div>
-            <div style="font-size:12px;color:var(--text-m)">${esc(i.instance_name)}</div>
-          </div>
-          <div class="ws-pill"><div class="ws-dot ${i.status==='connected'?'on':''}"></div>${i.status==='connected'?'Conectado':'Desconectado'}</div>
-        </div>
-        <div style="font-size:12px;color:var(--text-m);margin-bottom:12px">
-          ${i.daily_sent||0} / ${i.daily_limit||200} enviados hoje
-        </div>
-        <div style="background:rgba(255,255,255,.04);border-radius:6px;height:4px;margin-bottom:12px">
-          <div style="background:var(--purple);height:100%;border-radius:6px;width:${Math.min(100,((i.daily_sent||0)/(i.daily_limit||200))*100)}%"></div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-outline btn-xs" onclick="checkWAStatus('${i.id}',this)">↻ Status</button>
-          <button class="btn btn-danger btn-xs" onclick="deleteWAInst('${i.id}')">🗑</button>
-        </div>
-      </div>`).join('');
-    // Update topbar dot
-    var anyConnected=inst.some(i=>i.status==='connected');
-    document.getElementById('waDot').className='dot'+(anyConnected?' on':'');
-    document.getElementById('waLbl').textContent=anyConnected?'WhatsApp ✓':'WhatsApp ✗';
+    if(!inst.length){el.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">💬</div><p>Nenhuma instância configurada. Clique em "+ Nova Instância" para começar.</p></div>';return;}
+    renderWAInstances(inst);
+    // Auto-check real status from Evolution for each instance in parallel
+    Promise.all(inst.map(i=>
+      api('GET','/whatsapp/instances/'+i.id+'/status').catch(()=>null)
+    )).then(()=> api('GET','/whatsapp/instances').then(fresh=>{if(fresh)renderWAInstances(fresh);}).catch(()=>{}));
   }catch(e){toast('Erro WA: '+e.message,'error');}
+}
+
+function renderWAInstances(inst) {
+  var el=document.getElementById('wa-instances-list');
+  el.innerHTML=inst.map(i=>`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div>
+          <div style="font-weight:600">${esc(i.display_name||i.instance_name)}</div>
+          <div style="font-size:12px;color:var(--text-m)">${esc(i.instance_name)}</div>
+        </div>
+        <div class="ws-pill"><div class="ws-dot ${i.status==='connected'?'on':''}"></div>${i.status==='connected'?'✅ Conectado':'⚪ Desconectado'}</div>
+      </div>
+      <div style="font-size:12px;color:var(--text-m);margin-bottom:12px">
+        ${i.daily_sent||0} / ${i.daily_limit||200} enviados hoje
+      </div>
+      <div style="background:rgba(255,255,255,.04);border-radius:6px;height:4px;margin-bottom:12px">
+        <div style="background:var(--purple);height:100%;border-radius:6px;width:${Math.min(100,((i.daily_sent||0)/(i.daily_limit||200))*100)}%"></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-xs" onclick="checkWAStatus('${i.id}',this)">↻ Verificar</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteWAInst('${i.id}')">🗑</button>
+      </div>
+    </div>`).join('');
+  var anyConnected=inst.some(i=>i.status==='connected');
+  document.getElementById('waDot').className='dot'+(anyConnected?' on':'');
+  document.getElementById('waLbl').textContent=anyConnected?'WhatsApp ✓':'WhatsApp ✗';
 }
 
 async function checkWAStatus(id, btn) {
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
-  try{await api('GET','/whatsapp/instances/'+id+'/status');toast('Status atualizado','info');loadWAInstances();}
-  catch(e){toast('Erro: '+e.message,'error');}
-  btn.disabled=false;btn.innerHTML='↻ Status';
+  try{
+    var r=await api('GET','/whatsapp/instances/'+id+'/status');
+    var status=r?.resolved_status||'desconhecido';
+    toast(status==='connected'?'✅ WhatsApp conectado!':'⚪ Desconectado — escaneie o QR na Evolution API','info');
+    loadWAInstances();
+  }catch(e){toast('Erro ao verificar: '+e.message,'error');}
+  btn.disabled=false;btn.innerHTML='↻ Verificar';
 }
 
 async function salvarInstancia(btn) {
