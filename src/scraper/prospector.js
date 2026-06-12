@@ -4,20 +4,7 @@ const { scrapeGoogleMaps } = require('./googleMaps');
 const supabase = require('../db');
 const aiService = require('../services/aiService');
 const metaCapiService = require('../services/metaCapiService');
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function normalizePhone(telefone) {
-  if (!telefone) return '';
-  let digits = String(telefone).replace(/\D/g, '');
-  // Remove leading 0
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  // Prepend Brazil country code if 10 or 11 digits
-  if (digits.length === 10 || digits.length === 11) {
-    digits = '55' + digits;
-  }
-  return digits;
-}
+const { normalizePhone, isMobilePhone } = require('../utils/phoneNormalizer');
 
 function sendProgress(data) {
   if (process.send) {
@@ -83,8 +70,20 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
           empresa_website: empresa.website || null,
         });
 
-        // ── Blacklist check ──────────────────────────────────────────────
+        // ── Phone type check — skip landlines ───────────────────────────
         const telefoneNorm = normalizePhone(empresa.telefone);
+        if (telefoneNorm && !isMobilePhone(telefoneNorm)) {
+          sendProgress({
+            tipo: 'lead_fixo',
+            mensagem: `📞 ${empresa.nome} tem telefone fixo — ignorado`,
+            atual: i + 1,
+            total: empresas.length,
+            empresa_nome: empresa.nome,
+          });
+          continue;
+        }
+
+        // ── Blacklist check ──────────────────────────────────────────────
         if (telefoneNorm) {
           const { data: blacklisted } = await supabase
             .from('blacklist')

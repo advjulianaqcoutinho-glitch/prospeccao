@@ -385,6 +385,9 @@ textarea{resize:vertical;min-height:72px}
         </table></div>
         <div id="fila-empty" class="empty" style="display:none"><div class="empty-icon">⏳</div><p>Fila vazia</p></div>
       </div>
+      <div id="warmup-banner" style="display:none;align-items:center;gap:10px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;margin-top:12px;color:var(--yellow)">
+        <span></span>
+      </div>
     </div>
 
     <!-- WHATSAPP -->
@@ -1112,11 +1115,20 @@ function handleWS(d) {
     l2.textContent = '['+new Date().toLocaleTimeString()+'] '+(d.status==='sent'?'✅ Enviado para ':'❌ Falha: ')+esc(d.nome||'');
     log2.appendChild(l2); log2.scrollTop = log2.scrollHeight;
     if (d.status==='sent') {
-      // Increment dashboard Enviados counter live
       var envEl = document.getElementById('s-enviados');
       if (envEl) { var cur = parseInt(envEl.textContent)||0; envEl.textContent = cur+1; }
-      // Also refresh full stats if on dashboard tab
+      // Update fila stats live
+      var fqSent = document.getElementById('fq-sent');
+      if (fqSent) { var cs = parseInt(fqSent.textContent)||0; fqSent.textContent = cs+1; }
+      var fqPend = document.getElementById('fq-pending');
+      if (fqPend) { var cp = parseInt(fqPend.textContent)||0; if(cp>0) fqPend.textContent = cp-1; }
+      invalidateCache('fila');
       if (document.getElementById('page-dashboard').classList.contains('active')) loadDash();
+    }
+    if (d.status==='failed') {
+      var fqFail = document.getElementById('fq-failed');
+      if (fqFail) { var cf = parseInt(fqFail.textContent)||0; fqFail.textContent = cf+1; }
+      invalidateCache('fila');
     }
   }
 }
@@ -1185,7 +1197,7 @@ async function loadDash() {
     var tbody = document.getElementById('dash-leads');
     var leads = s.recentLeads||[];
     if (!leads.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-m);padding:20px">Nenhum lead ainda</td></tr>'; return; }
-    tbody.innerHTML = leads.map(l=>`<tr><td><strong>${esc(l.nome)}</strong></td><td style="color:var(--text-m)">${esc(l.telefone)}</td><td>${scoreBadge(l.score)}</td><td>${bdg(l.status)}</td><td style="font-size:11px;color:var(--text-m)">${fmt(l.criado_em)}</td></tr>`).join('');
+    tbody.innerHTML = leads.map(l=>`<tr><td><strong>${esc(l.nome)}</strong></td><td style="color:var(--text-m)">${esc(l.telefone)}</td><td>${scoreBadge(l.score,l.score_breakdown)}</td><td>${bdg(l.status)}</td><td style="font-size:11px;color:var(--text-m)">${fmt(l.criado_em)}</td></tr>`).join('');
     markCached('dashboard');
   } catch(e){ toast('Erro dashboard: '+e.message,'error'); }
 }
@@ -1731,7 +1743,7 @@ async function loadLeads() {
       <td><input type="checkbox" class="lead-cb" value="${l.id}" onchange="onLeadCbChange()" style="width:auto;cursor:pointer"></td>
       <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.endereco||'')}</span></td>
       <td style="color:var(--text-m);font-size:12px">${esc(l.telefone)}</td>
-      <td>${scoreBadge(l.score)}</td>
+      <td>${scoreBadge(l.score,l.score_breakdown)}</td>
       <td>${bdg(l.kanban_stage||'novo')}</td>
       <td>${bdg(l.status)}</td>
       <td>${classifBadge(l.classificacao)}</td>
@@ -1969,18 +1981,18 @@ async function loadKanban() {
   wrap.innerHTML=stages.map(s=>{
     var cols=leads.filter(l=>l.kanban_stage===s);
     var total=cols.reduce((a,l)=>a+(parseFloat(l.deal_value)||0),0);
-    return `<div class="kanban-col" id="col-${s}" ondragover="event.preventDefault()" ondrop="dropLead(event,'${s}')">
+    return `<div class="kanban-col" id="col-${s}" data-kanban-col="${s}" ondragover="event.preventDefault()" ondrop="dropLead(event,'${s}')">
       <div class="kanban-col-head">
         <span>${labels[s]} <span style="color:var(--text-m)">(${cols.length})</span></span>
         <span style="font-size:11px;color:var(--green)">R$${total.toLocaleString('pt-BR',{minimumFractionDigits:0})}</span>
       </div>
-      <div class="kanban-col-body">
+      <div class="kanban-col-body kanban-cards">
         ${cols.length?cols.map(l=>`
-          <div class="kanban-card" draggable="true" id="kc-${l.id}" ondragstart="dragLead(event,'${l.id}')">
+          <div class="kanban-card" draggable="true" id="kc-${l.id}" data-lead-kanban="${l.id}" ondragstart="dragLead(event,'${l.id}')">
             <div class="kanban-card-name">${esc(l.nome)}</div>
             <div class="kanban-card-phone">${esc(l.telefone)}</div>
             <div class="kanban-card-footer">
-              ${scoreBadge(l.score)}
+              ${scoreBadge(l.score,l.score_breakdown)}
               <input class="deal-input" type="number" placeholder="R$" value="${l.deal_value||''}" onchange="saveDeal('${l.id}',this.value)" title="Valor do negócio">
             </div>
           </div>`).join(''):'<div style="color:var(--text-d);font-size:12px;text-align:center;padding:20px">Arraste leads aqui</div>'}
@@ -1995,9 +2007,18 @@ async function dropLead(e,stage){
   e.preventDefault();
   if(!draggedId)return;
   document.querySelectorAll('.kanban-card').forEach(c=>c.classList.remove('dragging'));
-  try{await api('PATCH','/leads/'+draggedId+'/kanban',{kanban_stage:stage});loadKanban();}
-  catch(ex){toast('Erro: '+ex.message,'error');}
-  draggedId=null;
+  var id=draggedId; draggedId=null;
+  // Optimistic: move card visually right away
+  var card=document.querySelector('[data-lead-kanban="'+id+'"]');
+  if(card){
+    var col=document.querySelector('[data-kanban-col="'+stage+'"] .kanban-cards');
+    if(col){col.appendChild(card);card.style.opacity='0.5';}
+  }
+  try{
+    await api('PATCH','/leads/'+id+'/kanban',{kanban_stage:stage});
+    if(card)card.style.opacity='';
+    invalidateCache('kanban');
+  } catch(ex){toast('Erro: '+ex.message,'error');loadKanban();}
 }
 async function saveDeal(id,val){
   try{await api('PATCH','/leads/'+id,{deal_value:parseFloat(val)||null});}catch(e){}
@@ -2028,6 +2049,18 @@ async function loadFila() {
     document.getElementById('fq-failed').textContent = failed;
     document.getElementById('fq-next').textContent = nextItem ? fmt(nextItem.scheduled_at) : '—';
     document.getElementById('fila-summary').style.display = items.length ? 'grid' : 'none';
+    // Warm-up indicator: if next pending is far in the future, show banner
+    var warmupBanner = document.getElementById('warmup-banner');
+    if (warmupBanner) {
+      if (nextItem && pending > 0) {
+        var nextDate = new Date(nextItem.scheduled_at);
+        var diffH = (nextDate - Date.now()) / 3600000;
+        if (diffH > 12) {
+          warmupBanner.style.display = 'flex';
+          warmupBanner.querySelector('span').textContent = `⏳ Limite diário atingido — próximo envio ${fmt(nextItem.scheduled_at)}`;
+        } else { warmupBanner.style.display = 'none'; }
+      } else { warmupBanner.style.display = 'none'; }
+    }
 
     if(!items.length){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
@@ -2255,11 +2288,15 @@ function bdg(s){
   return`<span class="${cls}"><span class="dot"></span>${s||'–'}</span>`;
 }
 
-function scoreBadge(s){
+function scoreBadge(s, breakdown){
   if(s==null||s===undefined||s==='')return'<span style="color:var(--text-d);font-size:11px">–</span>';
   var n=parseInt(s);
   var cls=n<40?'score-low':n<70?'score-mid':'score-high';
-  return`<span class="score-badge ${cls}">${n}</span>`;
+  var tip='';
+  if(breakdown && typeof breakdown==='object'){
+    tip = Object.entries(breakdown).map(([k,v])=>k+': '+v).join(' | ');
+  }
+  return`<span class="score-badge ${cls}" title="${tip?tip:n+' pontos'}">${n}</span>`;
 }
 
 function classifBadge(c){

@@ -2,16 +2,9 @@
 
 const { Router } = require('express');
 const supabase = require('../db');
+const { normalizePhone } = require('../utils/phoneNormalizer');
 
 const router = Router();
-
-function normalizePhone(t) {
-  if (!t) return '';
-  let d = String(t).replace(/\D/g, '');
-  if (d.startsWith('0')) d = d.slice(1);
-  if (d.length === 10 || d.length === 11) d = '55' + d;
-  return d;
-}
 
 router.get('/', async (req, res) => {
   const { limit = 50, offset = 0, search } = req.query;

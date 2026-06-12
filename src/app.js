@@ -111,9 +111,9 @@ app.use('/api/scoring', scoringRouter);
 app.use((err, req, res, next) => {
   console.error('[app] Unhandled error:', err.message || err);
   const status = err.status || err.statusCode || 500;
-  res.status(status).json({
-    error: err.message || 'Internal Server Error',
-  });
+  // Don't expose internal DB/service details in production
+  const safe = status < 500 ? (err.message || 'Bad request') : 'Internal server error';
+  res.status(status).json({ error: safe });
 });
 
 module.exports = app;

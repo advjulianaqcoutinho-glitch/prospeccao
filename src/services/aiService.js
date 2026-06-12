@@ -121,7 +121,12 @@ Classifique a resposta e sugira a próxima ação. Retorne JSON no formato:
     response_format: { type: 'json_object' },
   });
 
-  const parsed = JSON.parse(response.choices[0].message.content);
+  let parsed;
+  try {
+    parsed = JSON.parse(response.choices[0].message.content);
+  } catch {
+    parsed = {};
+  }
 
   const validClassificacoes = ['interessado', 'nao_interessado', 'pedir_mais_info'];
   if (!validClassificacoes.includes(parsed.classificacao)) {

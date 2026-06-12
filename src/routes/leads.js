@@ -179,6 +179,14 @@ router.post('/:id/disparar', async (req, res) => {
   if (error || !lead) return res.status(404).json({ error: 'Lead not found' });
   if (!lead.mensagem_gerada) return res.status(400).json({ error: 'Mensagem não gerada. Abra o lead e gere a mensagem antes de enviar.' });
 
+  // Blacklist check
+  const { normalizePhone } = require('../utils/phoneNormalizer');
+  const norm = normalizePhone(lead.telefone);
+  if (norm) {
+    const { data: bl } = await supabase.from('blacklist').select('id').eq('telefone_normalizado', norm).limit(1);
+    if (bl && bl.length > 0) return res.status(400).json({ error: 'Número está na blacklist' });
+  }
+
   try {
     await evolutionService.enviarMensagem(lead.telefone, lead.mensagem_gerada);
 

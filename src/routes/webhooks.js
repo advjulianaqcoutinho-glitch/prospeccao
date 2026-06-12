@@ -22,6 +22,18 @@ router.post('/evolution', async (req, res) => {
     const key = message.key || {};
     if (key.fromMe === true) return;
 
+    // Idempotency: skip if we already processed this message ID
+    const messageId = key.id;
+    if (messageId) {
+      const { data: existing } = await supabase
+        .from('interactions')
+        .select('id')
+        .eq('type', 'response_received')
+        .contains('payload', { message_id: messageId })
+        .limit(1);
+      if (existing && existing.length > 0) return;
+    }
+
     // Extract phone number and message text
     const remoteJid = key.remoteJid || '';
     const telefoneNormalizado = remoteJid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
@@ -50,7 +62,7 @@ router.post('/evolution', async (req, res) => {
       lead_id: lead.id,
       campanha_id: lead.campanha_id,
       type: 'response_received',
-      payload: { content: messageContent },
+      payload: { content: messageContent, message_id: messageId || null },
       created_at: now,
     });
 

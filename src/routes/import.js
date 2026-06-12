@@ -2,16 +2,9 @@
 
 const { Router } = require('express');
 const supabase = require('../db');
+const { normalizePhone, isMobilePhone } = require('../utils/phoneNormalizer');
 
 const router = Router();
-
-function normalizePhone(t) {
-  if (!t) return '';
-  let d = String(t).replace(/\D/g, '');
-  if (d.startsWith('0')) d = d.slice(1);
-  if (d.length === 10 || d.length === 11) d = '55' + d;
-  return d;
-}
 
 // POST /import/leads — importar leads via JSON (frontend faz parse do CSV)
 router.post('/leads', async (req, res) => {
