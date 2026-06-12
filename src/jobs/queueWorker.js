@@ -178,9 +178,14 @@ async function processQueue() {
       return;
     }
 
-    // Send message
+    // Auto-advance kanban to 'contatado' on first send
+    if (!lead.kanban_stage || lead.kanban_stage === 'novo') {
+      await supabase.from('leads').update({ kanban_stage: 'contatado', atualizado_em: new Date().toISOString() }).eq('id', lead.id);
+    }
+
+    // Send message — use campaign's assigned instance if set
     try {
-      const sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem);
+      const sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem, campanha.whatsapp_instance_id || null);
 
       const sentAt = new Date().toISOString();
       const hour = new Date().getHours();

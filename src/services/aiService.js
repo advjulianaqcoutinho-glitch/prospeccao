@@ -134,4 +134,47 @@ Classifique a resposta e sugira a próxima ação. Retorne JSON no formato:
   };
 }
 
-module.exports = { gerarMensagem, gerarMensagemAB, calcularScore, analisarResposta };
+async function gerarRespostaSugerida(mensagemOriginal, respostaLead, classificacao, perfil) {
+  const contextoClassif = {
+    interessado: 'O lead demonstrou interesse. Avance propondo uma reunião ou próximo passo concreto.',
+    pedir_mais_info: 'O lead quer mais informações. Responda de forma consultiva e termine com uma pergunta para engajar.',
+    nao_interessado: 'O lead não demonstrou interesse claro. Seja educado, deixe uma porta aberta e não insista.',
+  };
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `Você é ${perfil?.nome || 'um consultor'} da empresa ${perfil?.empresa || ''}. Tom: ${perfil?.tom_comunicacao || 'profissional'}. Escreva respostas curtas e naturais para WhatsApp, máximo 2 parágrafos.`,
+      },
+      {
+        role: 'user',
+        content: `Você enviou: "${mensagemOriginal}"
+O lead respondeu: "${respostaLead}"
+Classificação: ${classificacao}
+Orientação: ${contextoClassif[classificacao] || ''}
+
+Escreva uma resposta ideal para enviar ao lead agora.`,
+      },
+    ],
+    temperature: 0.6,
+  });
+
+  return response.choices[0].message.content.trim();
+}
+
+async function calcularScoreComRegras(lead, rules) {
+  let bonus = 0;
+  for (const rule of rules || []) {
+    if (!rule.ativo) continue;
+    if (rule.evento === 'tem_email' && lead.email) bonus += rule.pontos;
+    if (rule.evento === 'respondeu' && lead.status === 'respondeu') bonus += rule.pontos;
+    if (rule.evento === 'classificado_interessado' && lead.classificacao === 'interessado') bonus += rule.pontos;
+    if (rule.evento === 'muito_interessado' && lead.classificacao === 'muito_interessado') bonus += rule.pontos;
+    if (rule.evento === 'respondeu_2x' && (lead.reply_count || 0) >= 2) bonus += rule.pontos;
+  }
+  return Math.min(100, (lead.score || 0) + bonus);
+}
+
+module.exports = { gerarMensagem, gerarMensagemAB, calcularScore, analisarResposta, gerarRespostaSugerida, calcularScoreComRegras };

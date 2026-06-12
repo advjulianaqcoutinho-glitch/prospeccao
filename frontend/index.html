@@ -222,6 +222,7 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item" onclick="nav('templates',this)"><span class="nav-icon">📝</span>Templates</div>
     <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">📱</span>WhatsApp</div>
     <div class="nav-item" onclick="nav('blacklist',this)"><span class="nav-icon">⛔</span>Blacklist</div>
+    <div class="nav-item" onclick="nav('scoring',this)"><span class="nav-icon">🎯</span>Scoring</div>
     <div class="nav-item" onclick="nav('config',this)"><span class="nav-icon">⚙️</span>Configurações</div>
   </nav>
   <div class="sidebar-footer">
@@ -265,7 +266,7 @@ textarea{resize:vertical;min-height:72px}
     <div class="page" id="page-campanhas">
       <div class="sec-header">
         <div class="sec-title">Campanhas</div>
-        <button class="btn btn-primary" onclick="openModal('modal-campanha')">＋ Nova Campanha</button>
+        <button class="btn btn-primary" onclick="openNovaCampanha()">＋ Nova Campanha</button>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div class="table-wrap"><table>
@@ -431,7 +432,7 @@ textarea{resize:vertical;min-height:72px}
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div class="table-wrap"><table>
-          <thead><tr><th>Lead</th><th>Campanha</th><th>Última Resposta</th><th>Classificação</th><th>Respondeu em</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Lead</th><th>Campanha</th><th>Última Resposta</th><th>💡 Sugestão IA</th><th>Classificação</th><th>Respondeu em</th><th>Ações</th></tr></thead>
           <tbody id="resp-tbody"></tbody>
         </table></div>
         <div id="resp-empty" class="empty" style="display:none"><div class="empty-icon">💬</div><p>Nenhuma resposta ainda</p></div>
@@ -473,6 +474,26 @@ textarea{resize:vertical;min-height:72px}
       <div id="templates-empty" class="empty" style="display:none"><div class="empty-icon">📝</div><p>Nenhum template criado</p></div>
     </div>
 
+    <!-- SCORING -->
+    <div class="page" id="page-scoring">
+      <div class="sec-header">
+        <div class="sec-title">Scoring de Leads</div>
+        <button class="btn btn-primary" onclick="openModal('modal-scoring-rule')">＋ Nova Regra</button>
+      </div>
+      <div class="card" style="margin-bottom:16px;padding:16px;background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.3)">
+        <div style="font-size:13px;color:var(--text-m);line-height:1.6">
+          💡 <strong>Como funciona:</strong> Cada vez que um lead realiza uma ação (responder, ter email, ser classificado), ele recebe pontos. Leads com score ≥ 70 são <span style="color:var(--green)">quentes</span>. Foque seus esforços nesses primeiro.
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap"><table>
+          <thead><tr><th>Nome da Regra</th><th>Evento Gatilho</th><th>Pontos</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody id="scoring-tbody"></tbody>
+        </table></div>
+        <div id="scoring-empty" class="empty" style="display:none"><div class="empty-icon">🎯</div><p>Nenhuma regra definida</p></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -494,6 +515,7 @@ textarea{resize:vertical;min-height:72px}
       <div class="form-group"><label>Delay mínimo entre envios (seg)</label><input type="number" id="c-dmin" value="30"></div>
       <div class="form-group"><label>Delay máximo entre envios (seg)</label><input type="number" id="c-dmax" value="120"></div>
     </div>
+    <div class="form-group"><label>Instância WhatsApp (opcional)</label><select id="c-wa-instance"><option value="">Roteamento automático</option></select></div>
     <div style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap">
       <label class="toggle"><input type="checkbox" id="c-warmup"> Warm-up automático</label>
       <label class="toggle"><input type="checkbox" id="c-hours"> Horário comercial</label>
@@ -517,8 +539,19 @@ textarea{resize:vertical;min-height:72px}
 <div class="modal-overlay" id="modal-followup" style="display:none" onclick="closeOuter(event,'modal-followup')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">📅 Follow-up Sequence</div>
+    <div style="font-size:12px;color:var(--text-m);margin-bottom:12px">Configure a sequência de nutrição. Cada passo é enviado automaticamente no intervalo definido.</div>
     <div id="followup-steps"></div>
-    <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addFollowupStep()">＋ Adicionar Passo</button>
+    <div style="background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;padding:12px;margin-top:8px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:var(--text-m)">＋ Novo passo</div>
+      <div class="input-row" style="margin-bottom:8px">
+        <div class="form-group" style="margin:0"><label>Após quantos dias?</label><input type="number" id="fu-dias" value="3" min="1" placeholder="3"></div>
+        <div class="form-group" style="margin:0"><label>Tipo</label>
+          <select id="fu-tipo"><option value="ia">Gerado pela IA</option><option value="manual">Mensagem manual</option></select>
+        </div>
+      </div>
+      <div id="fu-msg-wrap" style="display:none" class="form-group"><label>Mensagem</label><textarea id="fu-msg" rows="3" placeholder="Use {{nome}}, {{empresa}}..."></textarea></div>
+      <button class="btn btn-primary btn-sm" onclick="addFollowupStep()">Adicionar Passo</button>
+    </div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('modal-followup')">Fechar</button></div>
   </div>
 </div>
@@ -609,6 +642,29 @@ textarea{resize:vertical;min-height:72px}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('modal-template')">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarTemplate(this)">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SCORING RULE -->
+<div class="modal-overlay" id="modal-scoring-rule" style="display:none" onclick="closeOuter(event,'modal-scoring-rule')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">🎯 Regra de Scoring</div>
+    <input type="hidden" id="sr-id">
+    <div class="form-group"><label>Nome da Regra</label><input id="sr-nome" placeholder="Ex: Lead Respondeu"></div>
+    <div class="form-group"><label>Evento Gatilho</label>
+      <select id="sr-evento">
+        <option value="respondeu">Respondeu à mensagem</option>
+        <option value="classificado_interessado">Classificado como Interessado</option>
+        <option value="muito_interessado">Classificado como Muito Interessado</option>
+        <option value="respondeu_2x">Respondeu mais de uma vez</option>
+        <option value="tem_email">Tem e-mail cadastrado</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Pontos (+)</label><input type="number" id="sr-pontos" value="10" min="1" max="100"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-scoring-rule')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarScoringRule(this)">Salvar</button>
     </div>
   </div>
 </div>
@@ -732,7 +788,7 @@ function handleWS(d) {
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
-var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',config:'Configurações'};
+var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',scoring:'Scoring de Leads',config:'Configurações'};
 
 function nav(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -751,6 +807,7 @@ function nav(page, el) {
   if (page==='templates') loadTemplates();
   if (page==='whatsapp') loadWAInstances();
   if (page==='blacklist') loadBlacklist();
+  if (page==='scoring') loadScoring();
   if (page==='config') loadConfig();
 }
 
@@ -773,6 +830,21 @@ async function loadDash() {
 }
 
 // ── Campanhas ─────────────────────────────────────────────────────────────
+async function openNovaCampanha() {
+  // Populate WA instances
+  var sel = document.getElementById('c-wa-instance');
+  sel.innerHTML = '<option value="">Roteamento automático</option>';
+  try {
+    var insts = await api('GET','/whatsapp/instances') || [];
+    insts.filter(i=>i.active!==false).forEach(i=>{
+      var o = document.createElement('option');
+      o.value = i.id; o.textContent = i.display_name || i.instance_name;
+      sel.appendChild(o);
+    });
+  } catch(e) {}
+  openModal('modal-campanha');
+}
+
 async function loadCampanhas() {
   try {
     campanhas = await api('GET','/campanhas') || [];
@@ -815,7 +887,8 @@ async function criarCampanha(btn) {
       business_hours_enabled:document.getElementById('c-hours').checked,
       business_hours_start:val('c-h-start'),
       business_hours_end:val('c-h-end'),
-      ab_testing_enabled:document.getElementById('c-ab').checked
+      ab_testing_enabled:document.getElementById('c-ab').checked,
+      whatsapp_instance_id:val('c-wa-instance')||null
     });
     closeModal('modal-campanha');
     toast('Campanha criada!','success');
@@ -861,32 +934,43 @@ async function openFollowup(campId) {
 
 function renderFollowupSteps(steps) {
   var el = document.getElementById('followup-steps');
-  if (!steps.length) { el.innerHTML='<div style="color:var(--text-m);font-size:13px;margin-bottom:8px">Nenhum passo configurado</div>'; return; }
-  el.innerHTML = steps.map((s,i)=>`
-    <div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
-      <div style="font-size:12px;color:var(--text-m);width:20px">${s.step_number}</div>
-      <div style="flex:1">
-        <div style="font-size:12px;color:var(--text-m)">Após ${s.delay_hours}h</div>
-        <div style="font-size:12px">${s.message_template||'(gerado pela IA)'}</div>
+  if (!steps.length) { el.innerHTML='<div style="color:var(--text-m);font-size:13px;margin-bottom:12px;text-align:center;padding:20px">Nenhum passo configurado. Adicione abaixo.</div>'; return; }
+  var cumHours = 0;
+  el.innerHTML = steps.map((s,i)=>{
+    cumHours += (s.delay_hours||0);
+    var dayLabel = cumHours<24 ? cumHours+'h' : 'Dia '+(Math.round(cumHours/24));
+    return `<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-glow);border:2px solid var(--purple);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--purple-l)">${s.step_number}</div>
+        ${i<steps.length-1?`<div style="width:2px;height:24px;background:var(--border2)"></div>`:''}
       </div>
-      <button class="btn btn-danger btn-xs" onclick="deleteFollowupStep('${s.id}')">✕</button>
-    </div>`).join('');
+      <div style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--yellow);font-weight:600">📅 ${dayLabel} após o envio inicial</span>
+          <button class="btn btn-danger btn-xs" onclick="deleteFollowupStep('${s.id}')">✕</button>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4">${s.message_template?esc(s.message_template.slice(0,120))+(s.message_template.length>120?'…':''):'<span style="color:var(--text-m);font-style:italic">IA gera automaticamente com contexto da campanha</span>'}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function addFollowupStep() {
-  var h = prompt('Intervalo em horas após o passo anterior:','24');
-  if (!h) return;
-  var msg = prompt('Mensagem (deixe vazio para IA gerar):','');
+  var dias = parseInt(document.getElementById('fu-dias').value) || 3;
+  var tipo = document.getElementById('fu-tipo').value;
+  var msg = tipo==='manual' ? document.getElementById('fu-msg').value.trim() : null;
   try {
     var steps = await api('GET','/campanhas/'+followupCampId+'/followups') || [];
     await api('POST','/campanhas/'+followupCampId+'/followups',{
       step_number: steps.length+1,
-      delay_hours: parseInt(h)||24,
+      delay_hours: dias*24,
       message_template: msg||null
     });
     var newSteps = await api('GET','/campanhas/'+followupCampId+'/followups') || [];
     renderFollowupSteps(newSteps);
-    toast('Passo adicionado','success');
+    document.getElementById('fu-dias').value='3';
+    document.getElementById('fu-msg').value='';
+    toast('Passo adicionado!','success');
   } catch(e){toast('Erro: '+e.message,'error');}
 }
 
@@ -1389,6 +1473,9 @@ function toast(msg,type='info'){
 document.getElementById('c-warmup').addEventListener('change',function(){document.getElementById('c-warmup-opts').style.display=this.checked?'grid':'none';});
 document.getElementById('c-hours').addEventListener('change',function(){document.getElementById('c-hours-opts').style.display=this.checked?'grid':'none';});
 
+// Follow-up tipo toggle
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='fu-tipo'){document.getElementById('fu-msg-wrap').style.display=e.target.value==='manual'?'block':'none';}});
+
 // ESC closes modals
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none');});
 
@@ -1416,7 +1503,11 @@ async function loadRespostas() {
     tbody.innerHTML = items.map(l=>`<tr>
       <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.telefone)}</span></td>
       <td style="font-size:12px;color:var(--text-m)">${esc(l.campanhas&&l.campanhas.nome||'')}</td>
-      <td style="max-width:280px;font-size:12px">${esc(l.ultima_resposta||'—')}</td>
+      <td style="max-width:220px;font-size:12px">${esc(l.ultima_resposta||'—')}</td>
+      <td style="max-width:220px">
+        ${l.ai_suggested_reply ? `<div style="font-size:11px;color:var(--cyan);background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:8px;padding:6px 8px;line-height:1.4">${esc(l.ai_suggested_reply.slice(0,120))}${l.ai_suggested_reply.length>120?'…':''}</div>
+        <button class="btn btn-outline btn-xs" style="margin-top:4px;border-color:rgba(6,182,212,.4);color:var(--cyan)" onclick="usarSugestaoIA('${l.id}','${esc(l.nome)}')">Usar esta resposta</button>` : '<span style="color:var(--text-d);font-size:11px">—</span>'}
+      </td>
       <td>${classifBadge(l.classificacao)}</td>
       <td style="font-size:11px;color:var(--text-m)">${fmt(l.respondeu_em||l.atualizado_em)}</td>
       <td><div class="td-actions">
@@ -1590,6 +1681,82 @@ async function deleteTemplate(id) {
 function usarTemplate(conteudo) {
   var msgText = document.getElementById('msg-text');
   if(msgText) { msgText.value = conteudo; toast('Template aplicado!','info'); }
+}
+
+// ── SCORING RULES ──────────────────────────────────────────────────────────
+var eventoLabels = {
+  respondeu: 'Respondeu à mensagem',
+  classificado_interessado: 'Classificado como Interessado',
+  muito_interessado: 'Classificado como Muito Interessado',
+  respondeu_2x: 'Respondeu mais de uma vez',
+  tem_email: 'Tem e-mail cadastrado',
+};
+
+async function loadScoring() {
+  try {
+    var rules = await api('GET','/scoring/rules') || [];
+    var tbody = document.getElementById('scoring-tbody');
+    var empty = document.getElementById('scoring-empty');
+    if (!rules.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+    tbody.innerHTML = rules.map(r=>`<tr>
+      <td><strong>${esc(r.nome)}</strong></td>
+      <td style="color:var(--text-m);font-size:12px">${esc(eventoLabels[r.evento]||r.evento)}</td>
+      <td><span style="color:var(--green);font-weight:600">+${r.pontos} pts</span></td>
+      <td>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" ${r.ativo?'checked':''} onchange="toggleScoringRule('${r.id}',this.checked)" style="width:auto;accent-color:var(--purple)">
+          <span style="font-size:12px;color:var(--text-m)">${r.ativo?'Ativa':'Inativa'}</span>
+        </label>
+      </td>
+      <td><button class="btn btn-danger btn-xs" onclick="deleteScoringRule('${r.id}')">🗑</button></td>
+    </tr>`).join('');
+  } catch(e) { toast('Erro scoring: '+e.message,'error'); }
+}
+
+async function salvarScoringRule(btn) {
+  var id = document.getElementById('sr-id').value;
+  var nome = document.getElementById('sr-nome').value.trim();
+  var evento = document.getElementById('sr-evento').value;
+  var pontos = parseInt(document.getElementById('sr-pontos').value) || 10;
+  if (!nome) return toast('Informe o nome da regra','error');
+  btn.disabled=true;
+  try {
+    if (id) await api('PATCH','/scoring/rules/'+id,{nome,evento,pontos});
+    else await api('POST','/scoring/rules',{nome,evento,pontos});
+    document.getElementById('sr-id').value='';
+    document.getElementById('sr-nome').value='';
+    closeModal('modal-scoring-rule');
+    toast('Regra salva!','success');
+    loadScoring();
+  } catch(e){toast('Erro: '+e.message,'error');}
+  finally{btn.disabled=false;}
+}
+
+async function toggleScoringRule(id, ativo) {
+  try { await api('PATCH','/scoring/rules/'+id,{ativo}); toast(ativo?'Regra ativada':'Regra desativada','info'); loadScoring(); }
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+async function deleteScoringRule(id) {
+  if (!confirm('Excluir regra?')) return;
+  try { await api('DELETE','/scoring/rules/'+id); toast('Regra excluída','info'); loadScoring(); }
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+// ── AI SUGGESTED REPLY ─────────────────────────────────────────────────────
+var aiSuggestionsCache = {};
+
+async function usarSugestaoIA(leadId, nome) {
+  // Fetch full lead to get ai_suggested_reply
+  try {
+    var lead = await api('GET','/leads/'+leadId);
+    var sugestao = lead?.ai_suggested_reply || '';
+    document.getElementById('reply-lead-id').value = leadId;
+    document.getElementById('reply-lead-name').textContent = 'Para: '+nome+' (sugestão IA)';
+    document.getElementById('reply-text').value = sugestao;
+    openModal('modal-reply');
+  } catch(e) { toast('Erro ao carregar sugestão','error'); }
 }
 
 // ── IMPORTAR CSV ────────────────────────────────────────────────────────────

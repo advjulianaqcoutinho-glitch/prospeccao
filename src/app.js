@@ -20,6 +20,7 @@ const templatesRouter = require('./routes/templates');
 const respostasRouter = require('./routes/respostas');
 const analyticsRouter = require('./routes/analytics');
 const importRouter = require('./routes/import');
+const scoringRouter = require('./routes/scoring');
 
 // ─── App factory ──────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ app.use('/api/templates', templatesRouter);
 app.use('/api/respostas', respostasRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/import', importRouter);
+app.use('/api/scoring', scoringRouter);
 
 // ── Global error handler ─────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars

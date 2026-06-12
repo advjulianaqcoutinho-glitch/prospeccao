@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
     delay_min = 30, delay_max = 120,
     warmup_enabled, business_hours_enabled,
     business_hours_start, business_hours_end,
-    ab_testing_enabled, source,
+    ab_testing_enabled, source, whatsapp_instance_id,
   } = req.body || {};
 
   if (!nome || !nicho || !cidade) {
@@ -45,6 +45,7 @@ router.post('/', async (req, res) => {
       business_hours_end: parseInt(business_hours_end) || 18,
       ab_testing_enabled: ab_testing_enabled || false,
       source,
+      whatsapp_instance_id: whatsapp_instance_id || null,
       status: 'criada',
       criado_em: new Date().toISOString(),
     })

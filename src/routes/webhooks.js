@@ -59,24 +59,53 @@ router.post('/evolution', async (req, res) => {
       .update({ status: 'respondeu', atualizado_em: now })
       .eq('id', lead.id);
 
-    // Async: analyze response and update classification
+    // Async: analyze response, generate suggested reply, advance kanban, rescore
     setImmediate(async () => {
       try {
-        // Fetch original message for context
-        const { data: fullLead } = await supabase.from('leads').select('mensagem_gerada').eq('id', lead.id).single();
+        const { data: fullLead } = await supabase.from('leads')
+          .select('mensagem_gerada, kanban_stage, reply_count, score, email')
+          .eq('id', lead.id).single();
+
         const analise = await aiService.analisarResposta(fullLead?.mensagem_gerada || '', messageContent);
 
+        // Generate suggested reply
+        const { data: perfilRows } = await supabase.from('user_profile').select('*').limit(1);
+        const perfil = perfilRows?.[0] || {};
+        let suggestedReply = '';
+        try {
+          suggestedReply = await aiService.gerarRespostaSugerida(
+            fullLead?.mensagem_gerada || '', messageContent, analise.classificacao, perfil
+          );
+        } catch (e) { console.error('[webhook] suggested reply error:', e.message); }
+
+        // Auto-advance kanban stage
+        const currentStage = fullLead?.kanban_stage || 'novo';
+        let newStage = currentStage;
+        if (analise.classificacao === 'interessado' && !['proposta', 'fechado'].includes(currentStage)) {
+          newStage = 'interessado';
+        } else if (currentStage === 'novo') {
+          newStage = 'contatado';
+        }
+
+        // Recalculate score with rules
+        const { data: scoringRules } = await supabase.from('scoring_rules').select('*').eq('ativo', true);
+        const replyCount = (fullLead?.reply_count || 0) + 1;
+        const scoreLead = { ...fullLead, status: 'respondeu', classificacao: analise.classificacao, reply_count: replyCount };
+        const newScore = await aiService.calcularScoreComRegras(scoreLead, scoringRules || []);
+
+        const now2 = new Date().toISOString();
         await supabase.from('leads').update({
           classificacao: analise.classificacao,
-          atualizado_em: new Date().toISOString(),
+          kanban_stage: newStage,
+          ai_suggested_reply: suggestedReply,
+          ai_reply_generated_at: now2,
+          reply_count: replyCount,
+          score: newScore,
+          atualizado_em: now2,
         }).eq('id', lead.id);
 
         if (ws && typeof ws.broadcast === 'function') {
-          ws.broadcast({
-            tipo: 'resposta',
-            lead_id: lead.id,
-            classificacao: analise.classificacao,
-          });
+          ws.broadcast({ tipo: 'resposta', lead_id: lead.id, classificacao: analise.classificacao, kanban_stage: newStage });
         }
       } catch (aiErr) {
         console.error('[webhook] AI analysis error:', aiErr.message);
