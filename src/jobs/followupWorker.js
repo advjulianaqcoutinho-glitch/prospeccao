@@ -3,95 +3,69 @@
 const supabase = require('../db');
 const aiService = require('../services/aiService');
 
-const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const INTERVAL_MS = 5 * 60 * 1000;
 
 async function processFollowups() {
   try {
     const now = new Date().toISOString();
 
-    // Fetch leads due for follow-up
     const { data: leads, error: leadsErr } = await supabase
       .from('leads')
       .select('*')
       .lte('next_followup_at', now)
       .eq('status', 'enviado');
 
-    if (leadsErr) {
-      console.error('[followupWorker] fetch leads error:', leadsErr.message);
-      return;
-    }
-
+    if (leadsErr) { console.error('[followupWorker] fetch error:', leadsErr.message); return; }
     if (!leads || leads.length === 0) return;
+
+    // Load user profile once for AI calls
+    const { data: perfilRows } = await supabase.from('user_profile').select('*').limit(1);
+    const perfil = perfilRows && perfilRows[0]
+      ? perfilRows[0]
+      : { nome: 'Prospector', empresa: '', descricao: '', tom_comunicacao: 'profissional' };
 
     for (const lead of leads) {
       try {
-        // Get followup sequences for this campanha, ordered by step_number
-        const { data: sequences, error: seqErr } = await supabase
+        const { data: sequences } = await supabase
           .from('followup_sequences')
           .select('*')
           .eq('campanha_id', lead.campanha_id)
           .order('step_number', { ascending: true });
 
-        if (seqErr) {
-          console.error('[followupWorker] fetch sequences error:', seqErr.message);
-          continue;
-        }
-
-        if (!sequences || sequences.length === 0) {
-          // No follow-up sequences configured; clear next_followup_at
-          await supabase
-            .from('leads')
-            .update({ next_followup_at: null, atualizado_em: new Date().toISOString() })
-            .eq('id', lead.id);
-          continue;
-        }
-
         const nextStepNumber = (lead.followup_count || 0) + 1;
-        const step = sequences.find((s) => s.step_number === nextStepNumber);
+        const step = (sequences || []).find((s) => s.step_number === nextStepNumber);
 
         if (!step) {
-          // No more steps; clear next_followup_at
-          await supabase
-            .from('leads')
-            .update({ next_followup_at: null, atualizado_em: new Date().toISOString() })
+          await supabase.from('leads')
+            .update({ next_followup_at: null, atualizado_em: now })
             .eq('id', lead.id);
           continue;
         }
 
-        // Generate follow-up message
         let mensagem;
         if (step.message_template) {
-          // Replace basic placeholders
           mensagem = step.message_template
             .replace(/\{\{nome\}\}/gi, lead.nome || '')
-            .replace(/\{\{empresa\}\}/gi, lead.nome || '')
+            .replace(/\{\{empresa\}\}/gi, perfil.empresa || '')
             .replace(/\{\{nicho\}\}/gi, lead.nicho || '');
         } else {
-          // Use AI to generate
           const { data: campanha } = await supabase
-            .from('campanhas')
-            .select('*')
-            .eq('id', lead.campanha_id)
-            .single();
-
-          const perfil = {
-            nome: campanha ? campanha.nome : 'Prospector',
-            empresa: campanha ? campanha.nome : '',
-            descricao: campanha ? campanha.contexto || '' : '',
-            tom_comunicacao: 'profissional',
-          };
-
+            .from('campanhas').select('nicho,contexto').eq('id', lead.campanha_id).single();
           mensagem = await aiService.gerarMensagem(
             lead.nome,
             lead.nicho || (campanha ? campanha.nicho : ''),
-            `Follow-up ${nextStepNumber} para este lead.`,
+            `Follow-up ${nextStepNumber}. ${campanha ? campanha.contexto || '' : ''}`,
             perfil
           );
         }
 
         const nowTs = new Date().toISOString();
+        const afterStep = (sequences || []).find((s) => s.step_number === nextStepNumber + 1);
+        const nextFollowupAt = afterStep
+          ? new Date(Date.now() + afterStep.delay_hours * 3600000).toISOString()
+          : null;
 
-        // Insert into send_queue as a followup
+        // Insert directly with message_text (no race condition)
         await supabase.from('send_queue').insert({
           lead_id: lead.id,
           campanha_id: lead.campanha_id,
@@ -99,40 +73,20 @@ async function processFollowups() {
           status: 'pending',
           type: 'followup',
           followup_step: nextStepNumber,
+          message_text: mensagem,
           created_at: nowTs,
+          updated_at: nowTs,
         });
 
-        // Determine next_followup_at
-        const afterStep = sequences.find((s) => s.step_number === nextStepNumber + 1);
-        let nextFollowupAt = null;
-        if (afterStep && afterStep.delay_hours) {
-          const delayMs = afterStep.delay_hours * 60 * 60 * 1000;
-          nextFollowupAt = new Date(Date.now() + delayMs).toISOString();
-        }
+        await supabase.from('leads').update({
+          followup_count: nextStepNumber,
+          next_followup_at: nextFollowupAt,
+          atualizado_em: nowTs,
+        }).eq('id', lead.id);
 
-        // Update lead
-        await supabase
-          .from('leads')
-          .update({
-            followup_count: nextStepNumber,
-            next_followup_at: nextFollowupAt,
-            atualizado_em: nowTs,
-          })
-          .eq('id', lead.id);
-
-        // Store message on the queue item (insert message text via a mensagem row if needed)
-        // Also update send_queue row with the generated message text
-        await supabase
-          .from('send_queue')
-          .update({ message_text: mensagem })
-          .eq('lead_id', lead.id)
-          .eq('status', 'pending')
-          .eq('type', 'followup')
-          .eq('followup_step', nextStepNumber);
-
-        console.log(`[followupWorker] Queued follow-up step ${nextStepNumber} for lead ${lead.nome}`);
-      } catch (leadErr) {
-        console.error(`[followupWorker] error for lead ${lead.id}:`, leadErr.message);
+        console.log(`[followupWorker] Queued step ${nextStepNumber} for ${lead.nome}`);
+      } catch (err) {
+        console.error(`[followupWorker] lead ${lead.id} error:`, err.message);
       }
     }
   } catch (err) {
@@ -143,7 +97,6 @@ async function processFollowups() {
 function start() {
   console.log('[followupWorker] Starting — polling every 5min');
   setInterval(processFollowups, INTERVAL_MS);
-  // Run immediately on startup
   processFollowups();
 }
 

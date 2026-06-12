@@ -150,7 +150,7 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
           cidade: campanha.cidade,
           nicho: campanha.nicho,
           score: score,
-          score_breakdown: scoreBreakdown ? JSON.stringify(scoreBreakdown) : null,
+          score_breakdown: scoreBreakdown || null,
           criado_em: now,
           atualizado_em: now,
         };

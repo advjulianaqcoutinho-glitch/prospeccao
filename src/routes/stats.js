@@ -78,7 +78,7 @@ router.get('/send-times', async (req, res) => {
   let query = supabase
     .from('send_time_stats')
     .select('*')
-    .order('response_rate', { ascending: false });
+    .order('total_reply', { ascending: false });
 
   if (nicho) query = query.eq('nicho', nicho);
 

@@ -16,6 +16,10 @@ const webhooksRouter = require('./routes/webhooks');
 const integrationsRouter = require('./routes/integrations');
 const queueRouter = require('./routes/queue');
 const followupsRouter = require('./routes/followups');
+const templatesRouter = require('./routes/templates');
+const respostasRouter = require('./routes/respostas');
+const analyticsRouter = require('./routes/analytics');
+const importRouter = require('./routes/import');
 
 // ─── App factory ──────────────────────────────────────────────────────────────
 
@@ -50,6 +54,10 @@ app.use('/api/integrations', integrationsRouter);
 app.use('/api/queue', queueRouter);
 // Nested followup routes live under /api/campanhas/:campanhaId/followups
 app.use('/api/campanhas', followupsRouter);
+app.use('/api/templates', templatesRouter);
+app.use('/api/respostas', respostasRouter);
+app.use('/api/analytics', analyticsRouter);
+app.use('/api/import', importRouter);
 
 // ── Global error handler ─────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars

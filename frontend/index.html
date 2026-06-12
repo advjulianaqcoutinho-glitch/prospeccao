@@ -215,9 +215,12 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
     <div class="nav-item" onclick="nav('campanhas',this)"><span class="nav-icon">🎯</span>Campanhas</div>
     <div class="nav-item" onclick="nav('leads',this)"><span class="nav-icon">👥</span>Leads</div>
+    <div class="nav-item" onclick="nav('respostas',this)"><span class="nav-icon">💬</span>Respostas</div>
     <div class="nav-item" onclick="nav('kanban',this)"><span class="nav-icon">📋</span>Kanban</div>
+    <div class="nav-item" onclick="nav('analytics',this)"><span class="nav-icon">📈</span>Analytics</div>
     <div class="nav-item" onclick="nav('fila',this)"><span class="nav-icon">⏳</span>Fila de Envios</div>
-    <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">💬</span>WhatsApp</div>
+    <div class="nav-item" onclick="nav('templates',this)"><span class="nav-icon">📝</span>Templates</div>
+    <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">📱</span>WhatsApp</div>
     <div class="nav-item" onclick="nav('blacklist',this)"><span class="nav-icon">⛔</span>Blacklist</div>
     <div class="nav-item" onclick="nav('config',this)"><span class="nav-icon">⚙️</span>Configurações</div>
   </nav>
@@ -277,7 +280,10 @@ textarea{resize:vertical;min-height:72px}
     <div class="page" id="page-leads">
       <div class="sec-header">
         <div class="sec-title">Leads</div>
-        <a href="/api/leads/export" id="export-btn" class="btn btn-outline btn-sm">⬇ Exportar CSV</a>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="openImportModal()">📥 Importar CSV</button>
+          <a href="/api/leads/export" id="export-btn" class="btn btn-outline btn-sm">⬇ Exportar CSV</a>
+        </div>
       </div>
       <div class="filters">
         <select id="f-camp" onchange="loadLeads()"><option value="">Todas as campanhas</option></select>
@@ -414,6 +420,59 @@ textarea{resize:vertical;min-height:72px}
       </div>
     </div>
 
+    <!-- RESPOSTAS -->
+    <div class="page" id="page-respostas">
+      <div class="sec-header">
+        <div class="sec-title">Respostas Recebidas</div>
+        <div style="display:flex;gap:8px">
+          <select id="resp-classif-filter" onchange="loadRespostas()" style="width:auto"><option value="">Todas</option><option value="interessado">Interessado</option><option value="muito_interessado">Muito Interessado</option><option value="nao_interessado">Não Interessado</option></select>
+          <button class="btn btn-outline btn-sm" onclick="loadRespostas()">↻</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap"><table>
+          <thead><tr><th>Lead</th><th>Campanha</th><th>Última Resposta</th><th>Classificação</th><th>Respondeu em</th><th>Ações</th></tr></thead>
+          <tbody id="resp-tbody"></tbody>
+        </table></div>
+        <div id="resp-empty" class="empty" style="display:none"><div class="empty-icon">💬</div><p>Nenhuma resposta ainda</p></div>
+      </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="page" id="page-analytics">
+      <div class="sec-header">
+        <div class="sec-title">Analytics</div>
+        <select id="an-camp-filter" onchange="loadAnalytics()" style="width:auto"><option value="">Todas as campanhas</option></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div style="font-weight:600;margin-bottom:14px">🔻 Funil de Conversão</div>
+          <div id="an-funil"></div>
+        </div>
+        <div class="card">
+          <div style="font-weight:600;margin-bottom:14px">📊 Score dos Leads</div>
+          <div id="an-score"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:14px">🎯 Performance por Campanha</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Campanha</th><th>Leads</th><th>Enviados</th><th>Responderam</th><th>Taxa Resp.</th><th>Interessados</th><th>Pipeline</th><th>Score Médio</th></tr></thead>
+          <tbody id="an-camp-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- TEMPLATES -->
+    <div class="page" id="page-templates">
+      <div class="sec-header">
+        <div class="sec-title">Templates de Mensagem</div>
+        <button class="btn btn-primary" onclick="openModal('modal-template')">＋ Novo Template</button>
+      </div>
+      <div id="templates-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px"></div>
+      <div id="templates-empty" class="empty" style="display:none"><div class="empty-icon">📝</div><p>Nenhum template criado</p></div>
+    </div>
+
   </div>
 </div>
 
@@ -537,6 +596,51 @@ textarea{resize:vertical;min-height:72px}
   </div>
 </div>
 
+<!-- MODAL TEMPLATE -->
+<div class="modal-overlay" id="modal-template" style="display:none" onclick="closeOuter(event,'modal-template')">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-title">📝 Template de Mensagem</div>
+    <input type="hidden" id="tpl-id">
+    <div class="input-row">
+      <div class="form-group"><label>Nome do Template</label><input id="tpl-nome" placeholder="Ex: Apresentação Inicial"></div>
+      <div class="form-group"><label>Nicho (opcional)</label><input id="tpl-nicho" placeholder="restaurante, dentista..."></div>
+    </div>
+    <div class="form-group"><label>Mensagem — use {{nome}}, {{empresa}}, {{nicho}}</label><textarea id="tpl-conteudo" rows="6" placeholder="Olá {{nome}}, tudo bem? Sou da {{empresa}}..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-template')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarTemplate(this)">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL REPLY -->
+<div class="modal-overlay" id="modal-reply" style="display:none" onclick="closeOuter(event,'modal-reply')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">💬 Responder Lead</div>
+    <input type="hidden" id="reply-lead-id">
+    <div id="reply-lead-name" style="font-size:13px;color:var(--text-m);margin-bottom:12px"></div>
+    <div class="form-group"><label>Mensagem</label><textarea id="reply-text" rows="5" placeholder="Digite sua resposta..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-reply')">Cancelar</button>
+      <button class="btn btn-primary" onclick="enviarResposta(this)">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORT CSV -->
+<div class="modal-overlay" id="modal-import" style="display:none" onclick="closeOuter(event,'modal-import')">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-title">📥 Importar Leads via CSV</div>
+    <div class="form-group"><label>Campanha de destino</label><select id="imp-camp"></select></div>
+    <div class="form-group"><label>Arquivo CSV (colunas: nome, telefone, endereco)</label><input type="file" id="imp-file" accept=".csv,.txt" style="padding:6px"></div>
+    <div id="imp-preview" style="font-size:12px;color:var(--text-m);margin-top:8px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-import')">Cancelar</button>
+      <button class="btn btn-primary" onclick="importarCSV(this)">Importar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toasts"></div>
 
 <script>
@@ -628,7 +732,7 @@ function handleWS(d) {
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
-var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',kanban:'Kanban',fila:'Fila de Envios',whatsapp:'WhatsApp',blacklist:'Blacklist',config:'Configurações'};
+var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',config:'Configurações'};
 
 function nav(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -640,8 +744,11 @@ function nav(page, el) {
   if (page==='dashboard') loadDash();
   if (page==='campanhas') loadCampanhas();
   if (page==='leads') { populateCampFilter(); loadLeads(); }
+  if (page==='respostas') loadRespostas();
   if (page==='kanban') { populateKanbanFilter(); loadKanban(); }
+  if (page==='analytics') { populateAnalyticsCamps(); loadAnalytics(); }
   if (page==='fila') { populateFilaFilter(); loadFila(); }
+  if (page==='templates') loadTemplates();
   if (page==='whatsapp') loadWAInstances();
   if (page==='blacklist') loadBlacklist();
   if (page==='config') loadConfig();
@@ -825,7 +932,7 @@ async function loadLeads() {
       <td>${scoreBadge(l.score)}</td>
       <td>${bdg(l.kanban_stage||'novo')}</td>
       <td>${bdg(l.status)}</td>
-      <td>${classifBadge(l.response_classification)}</td>
+      <td>${classifBadge(l.classificacao)}</td>
       <td><div class="td-actions">
         <button class="btn btn-outline btn-xs" title="Mensagem" onclick="openMsgModal('${l.id}')">💬</button>
         ${l.status!=='enviado'?`<button class="btn btn-primary btn-xs" title="Enviar" onclick="enviarAgora('${l.id}',this)">📤</button>`:''}
@@ -906,7 +1013,7 @@ async function confirmarAgendamento(btn) {
   var dt=document.getElementById('ag-dt').value;
   if (!dt){toast('Selecione data/hora','error');return;}
   btn.disabled=true;
-  try { await api('POST','/leads/'+id+'/agendar',{dataHora:new Date(dt).toISOString()}); closeModal('modal-agendar'); toast('Agendado!','success'); loadLeads(); }
+  try { await api('POST','/leads/'+id+'/agendar',{scheduled_at:new Date(dt).toISOString()}); closeModal('modal-agendar'); toast('Agendado!','success'); loadLeads(); }
   catch(e){toast('Erro: '+e.message,'error');}
   btn.disabled=false;
 }
@@ -1041,17 +1148,18 @@ async function loadFila() {
   var campId=document.getElementById('fila-camp-filter')?.value||'';
   var params=campId?'?campanha_id='+campId:'';
   try {
-    var items=await api('GET','/queue'+params)||[];
+    var resp3=await api('GET','/queue'+params);
+    var items=(resp3&&resp3.data)?resp3.data:(Array.isArray(resp3)?resp3:[]);
     var tbody=document.getElementById('fila-tbody');
     var empty=document.getElementById('fila-empty');
     if(!items.length){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
     tbody.innerHTML=items.map(q=>`<tr>
-      <td>${esc(q.lead_nome||q.lead_id)}</td>
-      <td>${esc(q.campanha_nome||'')}</td>
+      <td>${esc((q.leads&&q.leads.nome)||q.lead_id)}</td>
+      <td>${esc('')}</td>
       <td style="font-size:12px">${fmt(q.scheduled_at)}</td>
       <td>${bdg(q.status)}</td>
-      <td style="font-size:12px;color:var(--text-m)">${q.is_followup?'Follow-up #'+q.followup_step:'Inicial'}</td>
+      <td style="font-size:12px;color:var(--text-m)">${q.type==='followup'?'Follow-up #'+q.followup_step:'Inicial'}</td>
       <td>${q.status==='pending'?`<button class="btn btn-danger btn-xs" onclick="cancelQueue('${q.id}')">✕</button>`:''}</td>
     </tr>`).join('');
   }catch(e){toast('Erro fila: '+e.message,'error');}
@@ -1292,6 +1400,242 @@ function init(){
   setInterval(async()=>{
     try{var inst=await api('GET','/whatsapp/instances')||[];var on=inst.some(i=>i.status==='connected');document.getElementById('waDot').className='dot'+(on?' on':'');document.getElementById('waLbl').textContent=on?'WhatsApp ✓':'WhatsApp ✗';}catch(e){}
   },30000);
+}
+
+// ── RESPOSTAS ──────────────────────────────────────────────────────────────
+async function loadRespostas() {
+  var classif = document.getElementById('resp-classif-filter')?.value||'';
+  var params = classif ? '?classificacao='+classif : '';
+  try {
+    var resp = await api('GET','/respostas'+params);
+    var items = (resp&&resp.data)?resp.data:(Array.isArray(resp)?resp:[]);
+    var tbody = document.getElementById('resp-tbody');
+    var empty = document.getElementById('resp-empty');
+    if(!items.length){tbody.innerHTML='';empty.style.display='block';return;}
+    empty.style.display='none';
+    tbody.innerHTML = items.map(l=>`<tr>
+      <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.telefone)}</span></td>
+      <td style="font-size:12px;color:var(--text-m)">${esc(l.campanhas&&l.campanhas.nome||'')}</td>
+      <td style="max-width:280px;font-size:12px">${esc(l.ultima_resposta||'—')}</td>
+      <td>${classifBadge(l.classificacao)}</td>
+      <td style="font-size:11px;color:var(--text-m)">${fmt(l.respondeu_em||l.atualizado_em)}</td>
+      <td><div class="td-actions">
+        <button class="btn btn-primary btn-xs" onclick="openReply('${l.id}','${esc(l.nome)}')">↩ Responder</button>
+        <select style="font-size:11px;padding:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text)" onchange="classificarLead('${l.id}',this.value)">
+          <option value="">Classificar</option>
+          <option value="interessado">Interessado</option>
+          <option value="muito_interessado">Muito Interessado</option>
+          <option value="agendar">Quer Agendar</option>
+          <option value="nao_interessado">Não Interessado</option>
+        </select>
+      </div></td>
+    </tr>`).join('');
+  } catch(e){toast('Erro respostas: '+e.message,'error');}
+}
+
+function openReply(leadId, nome) {
+  document.getElementById('reply-lead-id').value = leadId;
+  document.getElementById('reply-lead-name').textContent = 'Para: '+nome;
+  document.getElementById('reply-text').value = '';
+  openModal('modal-reply');
+}
+
+async function enviarResposta(btn) {
+  var id = document.getElementById('reply-lead-id').value;
+  var mensagem = document.getElementById('reply-text').value.trim();
+  if(!mensagem) return;
+  btn.disabled=true;
+  try {
+    await api('POST','/respostas/'+id+'/reply',{mensagem});
+    closeModal('modal-reply');
+    toast('Resposta enviada!','success');
+    loadRespostas();
+  } catch(e){toast('Erro: '+e.message,'error');}
+  finally{btn.disabled=false;}
+}
+
+async function classificarLead(id, classificacao) {
+  if(!classificacao) return;
+  try { await api('PATCH','/respostas/'+id+'/classificar',{classificacao}); toast('Classificado!','success'); loadRespostas(); }
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+// ── ANALYTICS ──────────────────────────────────────────────────────────────
+async function populateAnalyticsCamps() {
+  var sel = document.getElementById('an-camp-filter');
+  if(sel.options.length>1) return;
+  var camps = await api('GET','/campanhas').catch(()=>[]);
+  (camps||[]).forEach(c=>{ var o=document.createElement('option');o.value=c.id;o.textContent=c.nome;sel.appendChild(o); });
+}
+
+async function loadAnalytics() {
+  var campId = document.getElementById('an-camp-filter')?.value||'';
+  var params = campId?'?campanha_id='+campId:'';
+  try {
+    var [funil, score, camps] = await Promise.all([
+      api('GET','/analytics/funil'+params),
+      api('GET','/analytics/score-distribution'+params),
+      api('GET','/analytics/campanhas'),
+    ]);
+
+    // Funil
+    var f = funil||{};
+    var funilEl = document.getElementById('an-funil');
+    var steps = [
+      {label:'Prospectados',val:f.prospectados||0,color:'var(--blue)'},
+      {label:'Enviados',val:f.enviados||0,color:'var(--purple)'},
+      {label:'Responderam',val:f.responderam||0,color:'var(--yellow)'},
+      {label:'Interessados',val:f.interessados||0,color:'var(--green)'},
+      {label:'Fechados',val:f.fechados||0,color:'var(--cyan)'},
+    ];
+    var max = steps[0].val||1;
+    funilEl.innerHTML = steps.map(s=>`
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span>${s.label}</span><strong>${s.val}</strong>
+        </div>
+        <div style="background:rgba(255,255,255,.06);border-radius:20px;height:8px;overflow:hidden">
+          <div style="width:${Math.round((s.val/max)*100)}%;height:100%;background:${s.color};border-radius:20px;transition:width .5s"></div>
+        </div>
+      </div>`).join('');
+
+    // Score distribution
+    var sc = score||{};
+    var scoreEl = document.getElementById('an-score');
+    var scTotal = Object.values(sc).reduce((a,b)=>a+b,0)||1;
+    scoreEl.innerHTML = Object.entries(sc).map(([k,v])=>`
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span>Score ${k}</span><strong>${v} (${Math.round((v/scTotal)*100)}%)</strong>
+        </div>
+        <div style="background:rgba(255,255,255,.06);border-radius:20px;height:8px;overflow:hidden">
+          <div style="width:${Math.round((v/scTotal)*100)}%;height:100%;background:var(--purple);border-radius:20px"></div>
+        </div>
+      </div>`).join('');
+
+    // Tabela campanhas
+    var tbody = document.getElementById('an-camp-tbody');
+    tbody.innerHTML = (camps||[]).map(c=>`<tr>
+      <td><strong>${esc(c.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(c.nicho||'')}</span></td>
+      <td>${c.total_leads}</td>
+      <td>${c.enviados}</td>
+      <td>${c.responderam}</td>
+      <td><span style="color:${c.taxa_resposta>20?'var(--green)':c.taxa_resposta>10?'var(--yellow)':'var(--red)'}">${c.taxa_resposta}%</span></td>
+      <td>${c.interessados}</td>
+      <td style="color:var(--green)">R$${(c.pipeline||0).toLocaleString('pt-BR')}</td>
+      <td>${scoreBadge(c.avg_score)}</td>
+    </tr>`).join('');
+  } catch(e){toast('Erro analytics: '+e.message,'error');}
+}
+
+// ── TEMPLATES ──────────────────────────────────────────────────────────────
+async function loadTemplates() {
+  try {
+    var items = await api('GET','/templates')||[];
+    var list = document.getElementById('templates-list');
+    var empty = document.getElementById('templates-empty');
+    if(!items.length){list.innerHTML='';empty.style.display='block';return;}
+    empty.style.display='none';
+    list.innerHTML = items.map(t=>`
+      <div class="card" style="position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div style="font-weight:600;font-size:14px">${esc(t.nome)}</div>
+            ${t.nicho?`<span class="badge badge-proposta" style="margin-top:4px">${esc(t.nicho)}</span>`:''}
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-outline btn-xs" onclick="editTemplate(${JSON.stringify(JSON.stringify(t))})">✏️</button>
+            <button class="btn btn-danger btn-xs" onclick="deleteTemplate('${t.id}')">🗑️</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-m);line-height:1.5;max-height:80px;overflow:hidden">${esc(t.conteudo)}</div>
+        <button class="btn btn-outline btn-xs" style="margin-top:8px" onclick="usarTemplate('${esc(t.conteudo)}')">Usar em mensagem</button>
+      </div>`).join('');
+  } catch(e){toast('Erro templates: '+e.message,'error');}
+}
+
+function editTemplate(tJson) {
+  var t = JSON.parse(tJson);
+  document.getElementById('tpl-id').value = t.id;
+  document.getElementById('tpl-nome').value = t.nome;
+  document.getElementById('tpl-nicho').value = t.nicho||'';
+  document.getElementById('tpl-conteudo').value = t.conteudo;
+  openModal('modal-template');
+}
+
+async function salvarTemplate(btn) {
+  var id = document.getElementById('tpl-id').value;
+  var nome = document.getElementById('tpl-nome').value.trim();
+  var nicho = document.getElementById('tpl-nicho').value.trim();
+  var conteudo = document.getElementById('tpl-conteudo').value.trim();
+  if(!nome||!conteudo) return toast('Nome e conteúdo obrigatórios','error');
+  btn.disabled=true;
+  try {
+    if(id) await api('PATCH','/templates/'+id,{nome,nicho,conteudo});
+    else await api('POST','/templates',{nome,nicho,conteudo});
+    document.getElementById('tpl-id').value='';
+    closeModal('modal-template');
+    toast('Template salvo!','success');
+    loadTemplates();
+  } catch(e){toast('Erro: '+e.message,'error');}
+  finally{btn.disabled=false;}
+}
+
+async function deleteTemplate(id) {
+  if(!confirm('Excluir template?')) return;
+  try { await api('DELETE','/templates/'+id); toast('Excluído','info'); loadTemplates(); }
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+function usarTemplate(conteudo) {
+  var msgText = document.getElementById('msg-text');
+  if(msgText) { msgText.value = conteudo; toast('Template aplicado!','info'); }
+}
+
+// ── IMPORTAR CSV ────────────────────────────────────────────────────────────
+async function openImportModal() {
+  var sel = document.getElementById('imp-camp');
+  sel.innerHTML = '<option value="">Selecione a campanha</option>';
+  var camps = await api('GET','/campanhas').catch(()=>[]);
+  (camps||[]).forEach(c=>{ var o=document.createElement('option');o.value=c.id;o.textContent=c.nome;sel.appendChild(o); });
+  openModal('modal-import');
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  var fileInput = document.getElementById('imp-file');
+  if(fileInput) fileInput.addEventListener('change', function(){
+    var preview = document.getElementById('imp-preview');
+    if(!this.files||!this.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var lines = e.target.result.split('\n').filter(Boolean);
+      preview.textContent = lines.length+' linhas encontradas. Primeiro registro: '+(lines[1]||lines[0]||'');
+    };
+    reader.readAsText(this.files[0]);
+  });
+});
+
+async function importarCSV(btn) {
+  var campId = document.getElementById('imp-camp').value;
+  var file = document.getElementById('imp-file').files[0];
+  if(!campId) return toast('Selecione a campanha','error');
+  if(!file) return toast('Selecione o arquivo CSV','error');
+  btn.disabled=true;
+  try {
+    var text = await file.text();
+    var lines = text.split('\n').filter(Boolean);
+    var headers = lines[0].split(',').map(h=>h.trim().replace(/"/g,'').toLowerCase());
+    var leads = lines.slice(1).map(line=>{
+      var cols = line.split(',').map(c=>c.trim().replace(/"/g,''));
+      var obj={};
+      headers.forEach((h,i)=>{obj[h]=cols[i]||'';});
+      return obj;
+    });
+    var result = await api('POST','/import/leads',{campanha_id:campId, leads});
+    closeModal('modal-import');
+    toast(`Importados: ${result.imported} | Ignorados: ${result.skipped}`,'success');
+  } catch(e){toast('Erro importação: '+e.message,'error');}
+  finally{btn.disabled=false;}
 }
 
 // Start

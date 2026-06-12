@@ -34,7 +34,10 @@ router.post('/login', async (req, res) => {
   const payload = { id: user.id, email: user.email };
   const token = jwt.sign(payload, config.JWT_SECRET, { expiresIn: '7d' });
 
-  return res.json({ token });
+  return res.json({
+    token,
+    user: { id: user.id, email: user.email, nome: user.nome, empresa: user.empresa },
+  });
 });
 
 // GET /me
