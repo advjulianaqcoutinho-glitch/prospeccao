@@ -25,6 +25,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ── Health check (no auth) ───────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
 // ── Auth middleware on /api/* except /api/auth/* and /api/webhooks/* ─────────
 app.use('/api', (req, res, next) => {
   const path = req.path;
@@ -33,9 +36,6 @@ app.use('/api', (req, res, next) => {
   }
   return authMiddleware(req, res, next);
 });
-
-// ── Health check (no auth) ───────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
