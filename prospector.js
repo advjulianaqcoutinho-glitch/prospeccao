@@ -1,10 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
 const { OpenAI } = require('openai');
+const WebSocket = require('ws');
 const { scrapeGoogleMaps } = require('./scraper');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_KEY,
+  { realtime: { transport: WebSocket } }
 );
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });

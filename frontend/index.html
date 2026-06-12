@@ -782,7 +782,7 @@ function connectWebSocket() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsReconnectTimer);
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var url   = proto + '//' + location.hostname + ':3000';
+  var url   = proto + '//' + location.host + '/socket';
   try { ws = new WebSocket(url); }
   catch (e) { addLog('WebSocket: falha ao conectar.', 'error'); return; }
 
