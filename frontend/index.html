@@ -268,12 +268,44 @@ textarea{resize:vertical;min-height:72px}
         <div class="sec-title">Campanhas</div>
         <button class="btn btn-primary" onclick="openNovaCampanha()">＋ Nova Campanha</button>
       </div>
-      <div class="card" style="padding:0;overflow:hidden">
-        <div class="table-wrap"><table>
-          <thead><tr><th>Nome</th><th>Nicho</th><th>Cidade</th><th>Leads</th><th>Status</th><th>Criada em</th><th>Ações</th></tr></thead>
-          <tbody id="camp-tbody"></tbody>
-        </table></div>
-        <div id="camp-empty" class="empty" style="display:none"><div class="empty-icon">🎯</div><p>Nenhuma campanha criada</p></div>
+      <!-- Safety widget -->
+      <div id="safety-widget" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="font-size:12px;color:var(--text-m)">📊 Disparos hoje</div>
+        <div>
+          <span id="sw-sent" style="font-size:18px;font-weight:700;color:var(--green)">0</span>
+          <span style="font-size:12px;color:var(--text-d)"> enviados</span>
+        </div>
+        <div style="flex:1;min-width:120px">
+          <div style="background:rgba(255,255,255,.06);border-radius:20px;height:6px;overflow:hidden">
+            <div id="sw-bar" style="height:100%;border-radius:20px;background:var(--green);width:0;transition:width .4s"></div>
+          </div>
+        </div>
+        <div id="sw-risk" style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(34,197,94,.1);color:var(--green)">🟢 Normal</div>
+      </div>
+      <!-- Tabs -->
+      <div class="tabs" style="margin-bottom:14px">
+        <div class="tab active" id="tab-ativas" onclick="switchCampTab('ativas',this)">Ativas</div>
+        <div class="tab" id="tab-arquivadas" onclick="switchCampTab('arquivadas',this)">Arquivadas</div>
+      </div>
+      <!-- Ativas -->
+      <div id="camp-ativas-section">
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nome</th><th>Nicho</th><th>Cidade</th><th>Leads</th><th>Status</th><th>Criada em</th><th>Ações</th></tr></thead>
+            <tbody id="camp-tbody"></tbody>
+          </table></div>
+          <div id="camp-empty" class="empty" style="display:none"><div class="empty-icon">🎯</div><p>Nenhuma campanha ativa</p></div>
+        </div>
+      </div>
+      <!-- Arquivadas -->
+      <div id="camp-arquivadas-section" style="display:none">
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nome</th><th>Nicho</th><th>Cidade</th><th>Leads</th><th>Arquivada em</th><th>Ações</th></tr></thead>
+            <tbody id="camp-arq-tbody"></tbody>
+          </table></div>
+          <div id="camp-arq-empty" class="empty" style="display:none"><div class="empty-icon">📦</div><p>Nenhuma campanha arquivada</p></div>
+        </div>
       </div>
     </div>
 
@@ -734,6 +766,83 @@ textarea{resize:vertical;min-height:72px}
   </div>
 </div>
 
+<!-- MODAL ARQUIVAR CAMPANHA -->
+<div class="modal-overlay" id="modal-arquivar" style="display:none" onclick="closeOuter(event,'modal-arquivar')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">🗂 Gerenciar Campanha</div>
+    <input type="hidden" id="arq-id">
+    <div id="arq-body" style="font-size:13px;color:var(--text-m);margin-bottom:16px">Carregando...</div>
+    <div id="arq-confirmar-wrap" style="display:none;margin-top:12px">
+      <div style="font-size:12px;color:var(--red);margin-bottom:8px">⚠️ Esta ação é permanente. Digite <strong>EXCLUIR</strong> para confirmar:</div>
+      <input id="arq-confirm-input" placeholder="EXCLUIR" oninput="document.getElementById('btn-excluir-perm').disabled=this.value!=='EXCLUIR'">
+    </div>
+    <div class="modal-footer" style="flex-direction:column;gap:8px;align-items:stretch">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('modal-arquivar')" style="flex:1">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarArquivar()" style="flex:2">📦 Arquivar (preserva leads)</button>
+      </div>
+      <div id="arq-confirmar-toggle">
+        <button class="btn btn-danger btn-sm" style="width:100%;justify-content:center" onclick="document.getElementById('arq-confirmar-wrap').style.display='block';this.style.display='none';document.getElementById('btn-excluir-perm').style.display='flex';document.getElementById('btn-excluir-perm').disabled=true">🗑 Excluir tudo permanentemente...</button>
+      </div>
+      <button id="btn-excluir-perm" class="btn btn-danger" style="display:none;justify-content:center" disabled onclick="confirmarExcluirPermanente()">🗑 Confirmar exclusão permanente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DISPARAR WIZARD -->
+<div class="modal-overlay" id="modal-disparar-wizard" style="display:none" onclick="closeOuter(event,'modal-disparar-wizard')">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-title">📤 Disparar Mensagens — Configuração de Segurança</div>
+    <input type="hidden" id="dw-campanha-id">
+    <!-- Steps indicator -->
+    <div style="display:flex;gap:0;margin-bottom:20px;background:var(--bg3);border-radius:10px;padding:4px">
+      <div id="dw-tab1" class="tab active" style="flex:1;text-align:center" onclick="dwGoStep(1)">1. Limites</div>
+      <div id="dw-tab2" class="tab" style="flex:1;text-align:center">2. Agenda</div>
+      <div id="dw-tab3" class="tab" style="flex:1;text-align:center">3. Confirmar</div>
+    </div>
+    <!-- Step 1 -->
+    <div id="dw-step1">
+      <div id="dw-risco-banner" style="border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:var(--green)">🟢 Seguro — risco baixo de banimento</div>
+      <div class="form-group">
+        <label>Limite diário de mensagens</label>
+        <input type="number" id="dw-daily" value="30" min="1" max="200" oninput="dwUpdateRisk()">
+        <div style="font-size:11px;color:var(--text-d);margin-top:4px">Recomendado: ≤ 30/dia para números novos. Números aquecidos suportam até 80/dia.</div>
+      </div>
+      <div class="input-row">
+        <div class="form-group">
+          <label>Intervalo mínimo (segundos)</label>
+          <input type="number" id="dw-dmin" value="30" min="10">
+          <div style="font-size:11px;color:var(--text-d);margin-top:4px">≥ 30s recomendado</div>
+        </div>
+        <div class="form-group">
+          <label>Intervalo máximo (segundos)</label>
+          <input type="number" id="dw-dmax" value="180" min="30">
+        </div>
+      </div>
+      <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-m);line-height:1.6">
+        💡 <strong>Dica de segurança:</strong> Cada lead recebe uma mensagem única gerada pela IA durante a prospecção. Intervalos variados e aleatórios simulam comportamento humano e reduzem o risco de detecção.
+      </div>
+    </div>
+    <!-- Step 2 -->
+    <div id="dw-step2" style="display:none">
+      <div style="font-size:13px;color:var(--text-m);margin-bottom:12px">Preview do agendamento com base nos seus limites:</div>
+      <div id="dw-schedule-preview" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-m)" id="dw-conclusao"></div>
+    </div>
+    <!-- Step 3 -->
+    <div id="dw-step3" style="display:none">
+      <div id="dw-resumo" style="background:var(--bg3);border-radius:10px;padding:16px;margin-bottom:16px;font-size:13px;line-height:1.8"></div>
+      <label class="toggle" style="margin-bottom:12px"><input type="checkbox" id="dw-aceite"> <span style="font-size:12px;color:var(--text-m)">Entendo que o sucesso depende da qualidade e aquecimento do meu número WhatsApp</span></label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-disparar-wizard')">Cancelar</button>
+      <button id="dw-btn-prev" class="btn btn-outline" style="display:none" onclick="dwGoStep(dwCurrentStep-1)">← Anterior</button>
+      <button id="dw-btn-next" class="btn btn-primary" onclick="dwNextStep()">Próximo →</button>
+      <button id="dw-btn-confirm" class="btn btn-primary" style="display:none" onclick="dwConfirmar(this)">✅ Confirmar e Agendar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL REPLY -->
 <div class="modal-overlay" id="modal-reply" style="display:none" onclick="closeOuter(event,'modal-reply')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -1030,6 +1139,7 @@ async function openNovaCampanha() {
 }
 
 async function loadCampanhas() {
+  loadSafetyWidget();
   try {
     campanhas = await api('GET','/campanhas') || [];
     var tbody = document.getElementById('camp-tbody');
@@ -1040,14 +1150,14 @@ async function loadCampanhas() {
       <td><strong>${esc(c.nome)}</strong></td>
       <td>${esc(c.nicho)}</td>
       <td>${esc(c.cidade)}</td>
-      <td>${c.total_leads||0}</td>
+      <td>${c.leads?.[0]?.count||0}</td>
       <td>${bdg(c.status)}</td>
       <td style="font-size:11px;color:var(--text-m)">${fmt(c.criado_em)}</td>
       <td><div class="td-actions">
         ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-warning btn-xs" onclick="openModal('modal-prospeccao-live')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
         <button class="btn btn-success btn-xs" onclick="dispararMassa('${c.id}',this)">📤 Massa</button>
         <button class="btn btn-outline btn-xs" onclick="openFollowup('${c.id}')">📅 FU</button>
-        <button class="btn btn-danger btn-xs" onclick="deletarCampanha('${c.id}')">🗑</button>
+        <button class="btn btn-danger btn-xs" onclick="abrirModalArquivar('${c.id}')">🗑</button>
       </div></td>
     </tr>`).join('');
   } catch(e){ toast('Erro campanhas: '+e.message,'error'); }
@@ -1114,20 +1224,248 @@ async function prospectar(id, btn) {
   btn.disabled=false;btn.innerHTML='🔍';
 }
 
+// ── Dispatch Wizard ───────────────────────────────────────────────────────
+var dwCurrentStep = 1;
+var dwLeadsCount = 0;
+var dwCampanha = null;
+
 async function dispararMassa(id, btn) {
-  if (!confirm('Disparar para todos os leads pendentes desta campanha?')) return;
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
+  // Load campanha details and pending leads count
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
   try {
-    var r = await api('POST','/campanhas/'+id+'/disparar-massa');
-    toast((r.queued||0)+' mensagens enfileiradas!','success');
+    var camp = campanhas.find(c=>c.id===id);
+    dwCampanha = camp || {};
+    var leads = await api('GET','/leads?campanha_id='+id+'&status=pendente&limit=5000') || [];
+    dwLeadsCount = Array.isArray(leads) ? leads.length : (leads.data ? leads.data.length : 0);
+    // If leads is object with data array
+    if (!Array.isArray(leads) && leads && leads.length !== undefined) dwLeadsCount = leads.length;
+    document.getElementById('dw-campanha-id').value = id;
+    // Pre-fill delay from campanha
+    if (camp) {
+      document.getElementById('dw-dmin').value = camp.delay_min || 30;
+      document.getElementById('dw-dmax').value = camp.delay_max || 180;
+    }
+    dwGoStep(1);
+    dwUpdateRisk();
+    openModal('modal-disparar-wizard');
   } catch(e){toast('Erro: '+e.message,'error');}
-  btn.disabled=false;btn.innerHTML='📤 Massa';
+  btn.disabled=false; btn.innerHTML='📤 Massa';
 }
 
-async function deletarCampanha(id) {
-  if (!confirm('Deletar campanha e todos os leads?')) return;
-  try { await api('DELETE','/campanhas/'+id); toast('Deletada','info'); loadCampanhas(); }
-  catch(e){toast('Erro: '+e.message,'error');}
+function dwUpdateRisk() {
+  var daily = parseInt(document.getElementById('dw-daily').value)||30;
+  var banner = document.getElementById('dw-risco-banner');
+  if (daily <= 30) {
+    banner.style.background='rgba(34,197,94,.1)'; banner.style.borderColor='rgba(34,197,94,.3)'; banner.style.color='var(--green)';
+    banner.textContent='🟢 Seguro — risco baixo de banimento';
+  } else if (daily <= 60) {
+    banner.style.background='rgba(245,158,11,.1)'; banner.style.borderColor='rgba(245,158,11,.3)'; banner.style.color='var(--yellow)';
+    banner.textContent='🟡 Moderado — use com cuidado, número precisa estar aquecido';
+  } else {
+    banner.style.background='rgba(239,68,68,.1)'; banner.style.borderColor='rgba(239,68,68,.3)'; banner.style.color='var(--red)';
+    banner.textContent='🔴 Alto risco de banimento — reduza o limite ou use número aquecido';
+  }
+}
+
+function dwGoStep(step) {
+  dwCurrentStep = step;
+  document.getElementById('dw-step1').style.display = step===1?'block':'none';
+  document.getElementById('dw-step2').style.display = step===2?'block':'none';
+  document.getElementById('dw-step3').style.display = step===3?'block':'none';
+  ['dw-tab1','dw-tab2','dw-tab3'].forEach((t,i)=>{
+    document.getElementById(t).classList.toggle('active', i+1===step);
+  });
+  document.getElementById('dw-btn-prev').style.display = step>1?'inline-flex':'none';
+  document.getElementById('dw-btn-next').style.display = step<3?'inline-flex':'none';
+  document.getElementById('dw-btn-confirm').style.display = step===3?'inline-flex':'none';
+  if (step===2) dwBuildSchedule();
+  if (step===3) dwBuildResume();
+}
+
+function dwNextStep() { if (dwCurrentStep<3) dwGoStep(dwCurrentStep+1); }
+
+function dwBuildSchedule() {
+  var daily = parseInt(document.getElementById('dw-daily').value)||30;
+  var dmin = parseInt(document.getElementById('dw-dmin').value)||30;
+  var dmax = parseInt(document.getElementById('dw-dmax').value)||180;
+  var camp = dwCampanha||{};
+  var bizEnabled = camp.business_hours_enabled||false;
+  var bizStart = parseInt(camp.business_hours_start)||8;
+  var bizEnd = parseInt(camp.business_hours_end)||18;
+  var workSecsPerDay = bizEnabled ? (bizEnd-bizStart)*3600 : 24*3600;
+  var avgDelay = (dmin+dmax)/2;
+  var sendsPerDay = Math.min(daily, Math.floor(workSecsPerDay/avgDelay));
+  var total = dwLeadsCount;
+  var days = [];
+  var remaining = total;
+  var dt = new Date();
+  // Skip to business hours
+  if (bizEnabled) {
+    var h = dt.getHours();
+    if (h < bizStart) dt.setHours(bizStart,0,0,0);
+    else if (h >= bizEnd) { dt.setDate(dt.getDate()+1); dt.setHours(bizStart,0,0,0); }
+  }
+  // Skip weekends
+  while (dt.getDay()===0||dt.getDay()===6) { dt.setDate(dt.getDate()+1); dt.setHours(bizStart||8,0,0,0); }
+  while (remaining>0 && days.length<14) {
+    var todaySends = Math.min(remaining, sendsPerDay);
+    var endMin = bizEnabled ? bizEnd : (bizStart||8)+(todaySends*avgDelay/3600);
+    var endH = Math.floor(endMin);
+    var endMm = Math.round((endMin-endH)*60);
+    days.push({
+      label: dt.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'}),
+      sends: todaySends,
+      start: (bizStart||8)+':00',
+      end: endH.toString().padStart(2,'0')+':'+endMm.toString().padStart(2,'0')
+    });
+    remaining -= todaySends;
+    dt = new Date(dt); dt.setDate(dt.getDate()+1);
+    if (bizEnabled) dt.setHours(bizStart,0,0,0);
+    while (dt.getDay()===0||dt.getDay()===6) { dt.setDate(dt.getDate()+1); }
+  }
+  var preview = document.getElementById('dw-schedule-preview');
+  preview.innerHTML = days.map((d,i)=>`
+    <div style="display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:600;color:var(--purple-l);min-width:100px">${d.label}</div>
+      <div style="font-size:20px;font-weight:700;color:var(--green);min-width:36px">${d.sends}</div>
+      <div style="font-size:11px;color:var(--text-m)">mensagens</div>
+      ${bizEnabled?`<div style="font-size:11px;color:var(--text-d);margin-left:auto">${d.start} – ${d.end}</div>`:''}
+    </div>`).join('');
+  var lastDay = days[days.length-1];
+  document.getElementById('dw-conclusao').innerHTML = `📅 Estimativa de conclusão: <strong>${lastDay?lastDay.label:'-'}</strong> · ${total} leads no total`;
+}
+
+function dwBuildResume() {
+  var daily = parseInt(document.getElementById('dw-daily').value)||30;
+  var dmin = parseInt(document.getElementById('dw-dmin').value)||30;
+  var dmax = parseInt(document.getElementById('dw-dmax').value)||180;
+  var camp = dwCampanha||{};
+  var bizStart = parseInt(camp.business_hours_start)||8;
+  var bizEnd = parseInt(camp.business_hours_end)||18;
+  document.getElementById('dw-resumo').innerHTML = `
+    <div>🎯 <strong>${dwLeadsCount}</strong> leads pendentes serão contactados</div>
+    <div>📅 Até <strong>${daily}</strong> mensagens por dia</div>
+    <div>⏱ Intervalos entre <strong>${dmin}s</strong> e <strong>${dmax}s</strong> (aleatório)</div>
+    ${camp.business_hours_enabled?`<div>🕐 Somente entre <strong>${bizStart}:00</strong> e <strong>${bizEnd}:00</strong></div>`:''}
+    <div>💬 Cada lead recebe uma mensagem <strong>única e personalizada</strong> gerada pela IA</div>
+  `;
+  document.getElementById('dw-aceite').checked = false;
+}
+
+async function dwConfirmar(btn) {
+  if (!document.getElementById('dw-aceite').checked) { toast('Marque a confirmação antes de continuar','error'); return; }
+  var id = document.getElementById('dw-campanha-id').value;
+  var daily = parseInt(document.getElementById('dw-daily').value)||30;
+  var dmin = parseInt(document.getElementById('dw-dmin').value)||30;
+  var dmax = parseInt(document.getElementById('dw-dmax').value)||180;
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  try {
+    var r = await api('POST','/campanhas/'+id+'/disparar-massa',{daily_limit:daily,delay_min:dmin,delay_max:dmax});
+    closeModal('modal-disparar-wizard');
+    toast('✅ '+(r.queued||0)+' mensagens agendadas com segurança!','success');
+    loadSafetyWidget();
+  } catch(e){toast('Erro: '+e.message,'error');}
+  btn.disabled=false; btn.innerHTML='✅ Confirmar e Agendar';
+}
+
+// ── Campaign archive ──────────────────────────────────────────────────────
+async function abrirModalArquivar(id) {
+  document.getElementById('arq-id').value = id;
+  document.getElementById('arq-confirmar-wrap').style.display = 'none';
+  document.getElementById('arq-confirmar-toggle').style.display = 'block';
+  document.getElementById('btn-excluir-perm').style.display = 'none';
+  document.getElementById('arq-confirm-input').value = '';
+  document.getElementById('arq-body').textContent = 'Carregando...';
+  openModal('modal-arquivar');
+  try {
+    var camp = campanhas.find(c=>c.id===id);
+    var leads = await api('GET','/leads?campanha_id='+id+'&limit=1') || [];
+    // Get count via stats
+    var all = await api('GET','/leads?campanha_id='+id+'&limit=5000') || [];
+    var cnt = Array.isArray(all) ? all.length : 0;
+    var nome = camp ? camp.nome : id;
+    document.getElementById('arq-body').innerHTML = `
+      <strong>${esc(nome)}</strong> tem <strong style="color:var(--purple-l)">${cnt} leads</strong>.<br><br>
+      <span style="color:var(--green)">📦 Arquivar</span> esconde a campanha da lista mas <strong>preserva todos os leads e histórico</strong>. Você pode restaurá-la quando quiser.<br><br>
+      <span style="color:var(--red)">🗑 Excluir permanentemente</span> remove a campanha e <strong>todos os ${cnt} leads</strong> de forma irreversível.`;
+  } catch(e) {
+    document.getElementById('arq-body').textContent = 'Esta campanha e seus leads.';
+  }
+}
+
+async function confirmarArquivar() {
+  var id = document.getElementById('arq-id').value;
+  try {
+    await api('POST','/campanhas/'+id+'/arquivar');
+    closeModal('modal-arquivar');
+    toast('📦 Campanha arquivada. Leads preservados.','success');
+    loadCampanhas();
+  } catch(e){toast('Erro: '+e.message,'error');}
+}
+
+async function confirmarExcluirPermanente() {
+  var id = document.getElementById('arq-id').value;
+  try {
+    await api('DELETE','/campanhas/'+id+'/permanente?confirmar=true');
+    closeModal('modal-arquivar');
+    toast('Campanha e leads excluídos permanentemente.','info');
+    loadCampanhas();
+  } catch(e){toast('Erro: '+e.message,'error');}
+}
+
+async function restaurarCampanha(id) {
+  try {
+    await api('POST','/campanhas/'+id+'/restaurar');
+    toast('↩ Campanha restaurada!','success');
+    loadCampanhas();
+  } catch(e){toast('Erro: '+e.message,'error');}
+}
+
+function switchCampTab(tab, el) {
+  document.getElementById('camp-ativas-section').style.display = tab==='ativas' ? 'block' : 'none';
+  document.getElementById('camp-arquivadas-section').style.display = tab==='arquivadas' ? 'block' : 'none';
+  document.querySelectorAll('#page-campanhas .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (tab==='arquivadas') loadCampanhasArquivadas();
+}
+
+async function loadCampanhasArquivadas() {
+  try {
+    var data = await api('GET','/campanhas/arquivadas') || [];
+    var tbody = document.getElementById('camp-arq-tbody');
+    var empty = document.getElementById('camp-arq-empty');
+    if (!data.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+    tbody.innerHTML = data.map(c=>`<tr>
+      <td><strong>${esc(c.nome)}</strong></td>
+      <td>${esc(c.nicho)}</td>
+      <td>${esc(c.cidade)}</td>
+      <td>${c.leads?.[0]?.count||0}</td>
+      <td style="font-size:11px;color:var(--text-m)">${fmt(c.deleted_at)}</td>
+      <td><div class="td-actions">
+        <button class="btn btn-success btn-xs" onclick="restaurarCampanha('${c.id}')">↩ Restaurar</button>
+        <button class="btn btn-danger btn-xs" onclick="abrirModalArquivar('${c.id}')">🗑 Excluir</button>
+      </div></td>
+    </tr>`).join('');
+  } catch(e){toast('Erro arquivadas: '+e.message,'error');}
+}
+
+async function loadSafetyWidget() {
+  try {
+    var s = await api('GET','/campanhas/stats/hoje');
+    if (!s) return;
+    var sent = s.sent_today||0;
+    document.getElementById('sw-sent').textContent = sent;
+    var widget = document.getElementById('safety-widget');
+    widget.style.display = sent>0 ? 'flex' : 'none';
+    var pct = Math.min(100, Math.round(sent/30*100));
+    var bar = document.getElementById('sw-bar');
+    bar.style.width = pct+'%';
+    var risk = document.getElementById('sw-risk');
+    if (pct<70) { bar.style.background='var(--green)'; risk.style.background='rgba(34,197,94,.1)'; risk.style.color='var(--green)'; risk.textContent='🟢 Normal'; }
+    else if (pct<90) { bar.style.background='var(--yellow)'; risk.style.background='rgba(245,158,11,.1)'; risk.style.color='var(--yellow)'; risk.textContent='🟡 Atenção'; }
+    else { bar.style.background='var(--red)'; risk.style.background='rgba(239,68,68,.1)'; risk.style.color='var(--red)'; risk.textContent='🔴 Limite'; }
+  } catch(e){}
 }
 
 // Follow-up

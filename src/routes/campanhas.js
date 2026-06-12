@@ -8,11 +8,47 @@ const ws = require('../ws');
 
 const router = Router();
 
+// GET /stats/hoje — must come before /:id routes
+router.get('/stats/hoje', async (req, res) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { count: sentToday, error } = await supabase
+    .from('send_queue')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
+    .gte('scheduled_at', todayStart.toISOString());
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Estimate daily limit from most recent pending/sent batch
+  const { data: limitRow } = await supabase
+    .from('send_queue')
+    .select('scheduled_at')
+    .gte('created_at', todayStart.toISOString())
+    .limit(1);
+
+  return res.json({ sent_today: sentToday || 0 });
+});
+
+// GET /arquivadas
+router.get('/arquivadas', async (req, res) => {
+  const { data, error } = await supabase
+    .from('campanhas')
+    .select('*, leads(count)')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data || []);
+});
+
 // GET /
 router.get('/', async (req, res) => {
   const { data, error } = await supabase
     .from('campanhas')
     .select('*, leads(count)')
+    .is('deleted_at', null)
     .order('criado_em', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -87,12 +123,63 @@ router.patch('/:id', async (req, res) => {
   return res.json(data);
 });
 
-// DELETE /:id
+// DELETE /:id → soft-delete (archive)
 router.delete('/:id', async (req, res) => {
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from('campanhas')
-    .delete()
+    .update({ deleted_at: now, status: 'arquivada', atualizado_em: now })
     .eq('id', req.params.id);
+
+  if (error) return res.status(400).json({ error: error.message });
+  return res.status(204).send();
+});
+
+// POST /:id/arquivar
+router.post('/:id/arquivar', async (req, res) => {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('campanhas')
+    .update({ deleted_at: now, status: 'arquivada', atualizado_em: now })
+    .eq('id', req.params.id);
+
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ message: 'Campanha arquivada' });
+});
+
+// POST /:id/restaurar
+router.post('/:id/restaurar', async (req, res) => {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('campanhas')
+    .update({ deleted_at: null, status: 'pronta', atualizado_em: now })
+    .eq('id', req.params.id);
+
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ message: 'Campanha restaurada' });
+});
+
+// DELETE /:id/permanente — hard delete with lead count check
+router.delete('/:id/permanente', async (req, res) => {
+  const confirmar = req.query.confirmar === 'true';
+
+  const { count: leadsCount, error: countErr } = await supabase
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('campanha_id', req.params.id);
+
+  if (countErr) return res.status(500).json({ error: countErr.message });
+
+  if (!confirmar && leadsCount > 0) {
+    return res.status(409).json({
+      leads_count: leadsCount,
+      message: `Esta campanha tem ${leadsCount} leads. Passe ?confirmar=true para excluir permanentemente.`,
+    });
+  }
+
+  // Delete leads first, then campaign
+  await supabase.from('leads').delete().eq('campanha_id', req.params.id);
+  const { error } = await supabase.from('campanhas').delete().eq('id', req.params.id);
 
   if (error) return res.status(400).json({ error: error.message });
   return res.status(204).send();
@@ -170,38 +257,62 @@ router.post('/:id/disparar-massa', async (req, res) => {
   const delayMin = campanha.delay_min || 30;
   const delayMax = campanha.delay_max || 120;
   const bizEnabled = campanha.business_hours_enabled || false;
-  // business_hours_start/end stored as integers (hours), e.g. 8 or 18
   const bizStartH = parseInt(campanha.business_hours_start) || 8;
   const bizEndH = parseInt(campanha.business_hours_end) || 18;
+  const dailyLimit = parseInt(req.body.daily_limit) || null;
 
   let scheduled = new Date();
 
   function nextBusinessTime(dt) {
     if (!bizEnabled) return dt;
-    const startH = bizStartH, startM = 0;
-    const endH = bizEndH, endM = 0;
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
+    const startMinutes = bizStartH * 60;
+    const endMinutes = bizEndH * 60;
     const dayMinutes = dt.getHours() * 60 + dt.getMinutes();
 
     if (dayMinutes < startMinutes) {
-      dt.setHours(startH, startM, 0, 0);
+      dt.setHours(bizStartH, 0, 0, 0);
     } else if (dayMinutes >= endMinutes) {
       dt.setDate(dt.getDate() + 1);
-      dt.setHours(startH, startM, 0, 0);
+      dt.setHours(bizStartH, 0, 0, 0);
     }
-    // Skip weekends
     while (dt.getDay() === 0 || dt.getDay() === 6) {
       dt.setDate(dt.getDate() + 1);
-      dt.setHours(startH, startM, 0, 0);
+      dt.setHours(bizStartH, 0, 0, 0);
     }
     return dt;
   }
 
+  function advanceToNextBusinessDay(dt) {
+    dt.setDate(dt.getDate() + 1);
+    dt.setHours(bizStartH, 0, 0, 0);
+    while (dt.getDay() === 0 || dt.getDay() === 6) {
+      dt.setDate(dt.getDate() + 1);
+    }
+    return dt;
+  }
+
+  let currentDay = scheduled.toDateString();
+  let countToday = 0;
+
   const queueItems = leads.map((lead) => {
+    // If daily limit hit, jump to next business day
+    if (dailyLimit && countToday >= dailyLimit) {
+      scheduled = advanceToNextBusinessDay(new Date(scheduled));
+      currentDay = scheduled.toDateString();
+      countToday = 0;
+    }
+
     const delaySecs = Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin;
     scheduled = new Date(scheduled.getTime() + delaySecs * 1000);
     scheduled = nextBusinessTime(new Date(scheduled));
+
+    // If the delay pushed into a new day, reset counter for that day
+    if (scheduled.toDateString() !== currentDay) {
+      currentDay = scheduled.toDateString();
+      countToday = 0;
+    }
+
+    countToday++;
 
     return {
       lead_id: lead.id,
