@@ -812,7 +812,8 @@ async function loadLeads() {
   if (kanban) params.push('kanban_stage='+kanban);
   if (search) params.push('search='+encodeURIComponent(search));
   try {
-    var leads = await api('GET','/leads'+(params.length?'?'+params.join('&'):'')) || [];
+    var resp = await api('GET','/leads'+(params.length?'?'+params.join('&'):''));
+    var leads = (resp && resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
     var tbody = document.getElementById('leads-tbody');
     var empty = document.getElementById('leads-empty');
     if (!leads.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
@@ -984,7 +985,8 @@ async function populateKanbanFilter() {
 async function loadKanban() {
   var campId=document.getElementById('kanban-camp')?.value||'';
   var params=campId?'?campanha_id='+campId:'';
-  var leads=await api('GET','/leads'+params) || [];
+  var resp2=await api('GET','/leads'+params);
+  var leads=(resp2&&resp2.data)?resp2.data:(Array.isArray(resp2)?resp2:[]);
   var stages=['novo','contatado','interessado','proposta','fechado','perdido'];
   var labels={novo:'Novo',contatado:'Contatado',interessado:'Interessado',proposta:'Proposta',fechado:'Fechado',perdido:'Perdido'};
   var wrap=document.getElementById('kanban-wrap');
