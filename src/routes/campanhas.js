@@ -212,12 +212,23 @@ router.post('/:id/prospectar', async (req, res) => {
   });
 
   child.stderr?.on('data', (data) => {
-    console.error(`[prospector:${req.params.id}]`, data.toString().trim());
-    ws.broadcast({
-      tipo: 'erro',
-      mensagem: data.toString().trim().slice(0, 200),
-      campanha_id: req.params.id,
-    });
+    const text = data.toString().trim();
+    console.error(`[prospector:${req.params.id}]`, text);
+
+    // Ignore known non-fatal Puppeteer/Chrome warnings
+    const isWarning = text.includes('Puppeteer old Headless deprecation')
+      || text.includes('--disable-dev-shm-usage')
+      || text.includes('DevTools listening')
+      || text.includes('GPU process')
+      || text.includes('NSS_VersionCheck');
+
+    if (!isWarning) {
+      ws.broadcast({
+        tipo: 'erro',
+        mensagem: text.slice(0, 200),
+        campanha_id: req.params.id,
+      });
+    }
   });
 
   child.on('exit', (code) => {
