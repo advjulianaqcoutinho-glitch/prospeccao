@@ -26,9 +26,9 @@ services:
         max_attempts: 3
       resources:
         limits:
-          memory: 512M
+          memory: 2G
         reservations:
-          memory: 128M
+          memory: 512M
       labels:
         - "traefik.enable=1"
         # Rota /api/*
