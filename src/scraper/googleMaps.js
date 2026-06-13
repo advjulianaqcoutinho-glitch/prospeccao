@@ -19,7 +19,6 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
       '--lang=pt-BR,pt',
       '--disable-extensions',
       '--disable-background-networking',
-      '--single-process',
     ],
   });
 
