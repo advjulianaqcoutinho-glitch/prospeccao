@@ -281,6 +281,18 @@ async function processQueue() {
     } catch (sendErr) {
       console.error('[queueWorker] send error:', sendErr.message);
 
+      // Number not on WhatsApp — mark lead and don't retry
+      if (sendErr.code === 'NO_WHATSAPP') {
+        await supabase.from('send_queue')
+          .update({ status: 'failed', last_error: 'Número não tem WhatsApp', updated_at: new Date().toISOString() })
+          .eq('id', item.id);
+        await supabase.from('leads')
+          .update({ status: 'sem_whatsapp', atualizado_em: new Date().toISOString() })
+          .eq('id', lead.id);
+        ws.broadcast({ tipo: 'queue_progress', leadId: lead.id, nome: lead.nome, status: 'failed', campanhaId: campanha.id, error: 'Sem WhatsApp' });
+        return;
+      }
+
       const attempts = (item.attempt_count || 0) + 1;
       const now5min = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 

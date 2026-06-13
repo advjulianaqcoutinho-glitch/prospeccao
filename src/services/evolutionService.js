@@ -61,6 +61,15 @@ async function enviarMensagem(telefone, mensagem, instanceId = null) {
     });
   } catch (axiosErr) {
     const detail = axiosErr.response?.data;
+
+    // Detect "number not on WhatsApp" — treat as a special non-retryable error
+    const responseArr = detail?.response?.message;
+    if (Array.isArray(responseArr) && responseArr[0]?.exists === false) {
+      const err = new Error('Número não tem WhatsApp');
+      err.code = 'NO_WHATSAPP';
+      throw err;
+    }
+
     const msg = typeof detail === 'object' ? JSON.stringify(detail) : (detail || axiosErr.message);
     console.error('[evolutionService] sendText error:', msg);
     throw new Error(`Evolution API: ${msg}`);
