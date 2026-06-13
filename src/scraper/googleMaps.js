@@ -6,7 +6,7 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
   console.log(`Iniciando scraping para "${nicho}" em "${cidade}"...`);
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new',
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       '--no-sandbox',
