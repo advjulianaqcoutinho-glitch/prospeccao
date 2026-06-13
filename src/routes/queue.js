@@ -27,8 +27,9 @@ router.get('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { error } = await supabase
     .from('send_queue')
-    .update({ status: 'cancelled', atualizado_em: new Date().toISOString() })
-    .eq('id', req.params.id);
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+    .in('status', ['pending', 'processing', 'paused']);
 
   if (error) return res.status(400).json({ error: error.message });
   return res.status(204).send();
@@ -40,8 +41,8 @@ router.post('/clear', async (req, res) => {
 
   let query = supabase
     .from('send_queue')
-    .update({ status: 'cancelled', atualizado_em: new Date().toISOString() })
-    .eq('status', 'pending');
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .in('status', ['pending', 'processing', 'paused']);
 
   if (campanha_id) query = query.eq('campanha_id', campanha_id);
 
