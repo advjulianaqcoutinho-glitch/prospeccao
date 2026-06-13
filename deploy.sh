@@ -5,7 +5,10 @@ echo "=== Prospector Deploy ==="
 
 # Carrega variáveis do .env
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 else
   echo "ERRO: arquivo .env não encontrado. Copie .env.example para .env e preencha as variáveis."
   exit 1
