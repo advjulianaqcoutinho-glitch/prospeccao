@@ -277,11 +277,12 @@ async function executarProspeccao({ campanhaId, nicho, cidade, limite, contexto 
     console.error('[prospector] Erro fatal:', err.message);
     sendProgress({ tipo: 'erro', mensagem: err.message });
 
-    await supabase
-      .from('campanhas')
-      .update({ status: 'erro', atualizado_em: new Date().toISOString() })
-      .eq('id', campanhaId)
-      .catch(() => {});
+    try {
+      await supabase
+        .from('campanhas')
+        .update({ status: 'erro', atualizado_em: new Date().toISOString() })
+        .eq('id', campanhaId);
+    } catch (_) {}
   }
 }
 

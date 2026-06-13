@@ -8,6 +8,7 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
   const browser = await puppeteer.launch({
     headless: 'new',
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    protocolTimeout: 120000,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -16,6 +17,9 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
       '--window-size=1280,900',
       '--disable-blink-features=AutomationControlled',
       '--lang=pt-BR,pt',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--single-process',
     ],
   });
 
@@ -33,9 +37,10 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
 
   const query = encodeURIComponent(`${nicho} ${cidade}`);
   await page.goto(`https://www.google.com/maps/search/${query}/?hl=pt-BR`, {
-    waitUntil: 'networkidle2',
-    timeout: 45000,
+    waitUntil: 'domcontentloaded',
+    timeout: 90000,
   });
+  await page.waitForTimeout(4000);
 
   // Accept cookies if prompted
   try {
@@ -69,7 +74,7 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
         await detailPage.setUserAgent(
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         );
-        await detailPage.goto(link, { waitUntil: 'networkidle2', timeout: 20000 });
+        await detailPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await detailPage.waitForTimeout(2000);
 
         const dados = await detailPage.evaluate(() => {
