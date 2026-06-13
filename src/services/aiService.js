@@ -67,35 +67,36 @@ async function gerarMensagem(empresa, nicho, contexto, perfil, variante = 'a', d
 
   // Build the middle line based on angle detected
   const linhaValor = {
-    escala_qualidade: `Vi a ${empresa} no Google — vocês têm uma das melhores avaliações de planejados em ${cidade || 'sua cidade'}.
+    escala_qualidade: `Vi a ${empresa} no Google. Vocês têm uma das melhores avaliações de planejados em ${cidade || 'sua cidade'}.
 
-Trabalho conectando lojas com esse nível de reputação a pessoas que estão em obra agora — clientes que já decidiram comprar e só precisam encontrar a loja certa.`,
+Trabalho conectando lojas com esse nível de reputação a pessoas que estão em obra agora. Clientes que já decidiram comprar e só precisam encontrar a loja certa.`,
 
     crescimento: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
 
-Tenho trabalhado com lojas do setor para conectá-las com pessoas que estão ativamente em obra ou reforma — clientes que já decidiram comprar, só ainda não escolheram onde.`,
+Tenho trabalhado com lojas do setor para conectá-las com pessoas que estão ativamente em obra ou reforma. Clientes que já decidiram comprar, só ainda não escolheram onde.`,
 
     visibilidade: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
 
-Reparei que vocês podem estar perdendo clientes que estão em obra agora — pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
+Reparei que vocês podem estar perdendo clientes que estão em obra agora. Pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
 
     presenca_digital: `Encontrei a ${empresa} no Google enquanto pesquisava lojas de planejados em ${cidade || 'sua cidade'}.
 
-Reparei que vocês podem estar perdendo clientes que estão em obra agora — pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
+Reparei que vocês podem estar perdendo clientes que estão em obra agora. Pessoas prontas pra comprar que pesquisam online e acabam indo pro concorrente sem nem saber que vocês existem.`,
   };
 
   const corpo = linhaValor[analise.anguloEscolhido] || linhaValor.crescimento;
 
   const systemPrompt = `Você é Igor, fundador da Assessoria para Lojistas de Móveis e criador do Método Projeto Fechado.
 
-ESTRUTURA OBRIGATÓRIA DA MENSAGEM (3 blocos curtos):
-1. "Oi, meu nome é Igor! [contexto de como encontrou a loja — 1 frase]"
-2. [linha de valor específica ao perfil da loja — 2 frases]
-3. "Você toparia entender como funciona?"
+ESTRUTURA OBRIGATÓRIA DA MENSAGEM (3 blocos separados por linha em branco):
+Bloco 1: "Oi, meu nome é Igor! [contexto de como encontrou a loja — 1 frase]"
+Bloco 2: [linha de valor específica ao perfil da loja — 2 frases curtas]
+Bloco 3: "Você toparia entender como funciona?"
 
 REGRAS ABSOLUTAS — NUNCA QUEBRE:
-- Siga a estrutura acima rigorosamente. Não invente outra estrutura.
+- Separe os 3 blocos com uma linha em branco entre eles (como no WhatsApp)
 - Máximo 5 frases no total. WhatsApp não é e-mail.
+- NUNCA use traço longo (—) ou travessão. Use ponto final para separar ideias.
 - NUNCA entregue o que você faz por completo — gere curiosidade, não explique tudo.
 - NUNCA use: "prospecção", "tráfego pago", "leads", "marketing digital", "impulsionar", "anúncios"
 - NUNCA use emojis
