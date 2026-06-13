@@ -8,7 +8,7 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
   const browser = await puppeteer.launch({
     headless: 'new',
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    protocolTimeout: 120000,
+    protocolTimeout: 180000,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -19,6 +19,7 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
       '--lang=pt-BR,pt',
       '--disable-extensions',
       '--disable-background-networking',
+      '--js-flags=--max-old-space-size=256',
     ],
   });
 
@@ -57,6 +58,15 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
   const empresas = [];
   let semNovas = 0;
 
+  // Reuse a single detail page to avoid excessive memory use
+  const detailPage = await browser.newPage();
+  await detailPage.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  );
+  await detailPage.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
+
   while (empresas.length < limit) {
     // Grab all visible place links
     const links = await page.evaluate(() => {
@@ -69,10 +79,6 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
       if (empresas.find((e) => e._link === link)) continue;
 
       try {
-        const detailPage = await browser.newPage();
-        await detailPage.setUserAgent(
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        );
         await detailPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await detailPage.waitForTimeout(2000);
 
@@ -203,8 +209,6 @@ async function scrapeGoogleMaps(nicho, cidade, limit = 10) {
 
         // Capture the canonical detail page URL
         const google_maps_url = detailPage.url();
-
-        await detailPage.close();
 
         if (dados.nome && dados.telefone) {
           empresas.push({
