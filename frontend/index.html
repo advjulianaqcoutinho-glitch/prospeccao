@@ -1237,6 +1237,7 @@ async function loadCampanhas() {
         ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-xs" onclick="abrirPainelAoVivo('${c.id}')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
         <button class="btn btn-success btn-xs" onclick="dispararMassa('${c.id}',this)">📤 Massa</button>
         <button class="btn btn-outline btn-xs" onclick="openFollowup('${c.id}')">📅 FU</button>
+        <button class="btn btn-xs" onclick="cancelarFila('${c.id}',this)" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)" title="Cancelar todos os envios pendentes">⏹ Parar</button>
         <button class="btn btn-danger btn-xs" onclick="abrirModalArquivar('${c.id}')">🗑</button>
       </div></td>
     </tr>`).join('');
@@ -1333,6 +1334,18 @@ var dwCurrentStep = 1;
 var dwLeadsCount = 0;
 var dwCampanha = null;
 var dwSelectedLeadIds = null; // null = all pending, array = specific leads
+
+async function cancelarFila(id, btn) {
+  if (!confirm('Parar todos os envios pendentes desta campanha?')) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    var r = await api('POST', '/campanhas/' + id + '/cancelar-fila');
+    toast('Fila cancelada — ' + (r.cancelados || 0) + ' envios removidos', 'info');
+    invalidateCache('fila');
+    if (typeof loadFila === 'function') loadFila();
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+  btn.disabled = false; btn.innerHTML = '⏹ Parar';
+}
 
 async function dispararMassa(id, btn) {
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';

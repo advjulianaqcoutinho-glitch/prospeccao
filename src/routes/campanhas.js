@@ -272,6 +272,18 @@ router.post('/:id/disparar-massa', async (req, res) => {
   if (leadsErr) return res.status(500).json({ error: leadsErr.message });
   if (!leads || leads.length === 0) return res.json({ queued: 0 });
 
+  // Dedup: exclude leads already pending/processing in queue
+  const { data: alreadyQueued } = await supabase
+    .from('send_queue')
+    .select('lead_id')
+    .eq('campanha_id', req.params.id)
+    .in('status', ['pending', 'processing', 'paused']);
+
+  const alreadyQueuedIds = new Set((alreadyQueued || []).map((r) => r.lead_id));
+  const leadsToQueue = leads.filter((l) => !alreadyQueuedIds.has(l.id));
+
+  if (leadsToQueue.length === 0) return res.json({ queued: 0, message: 'Todos os leads já estão na fila' });
+
   const delayMin = parseInt(req.body.delay_min) || campanha.delay_min || 30;
   const delayMax = parseInt(req.body.delay_max) || campanha.delay_max || 120;
   const bizEnabled = campanha.business_hours_enabled || false;
@@ -312,7 +324,7 @@ router.post('/:id/disparar-massa', async (req, res) => {
   let currentDay = scheduled.toDateString();
   let countToday = 0;
 
-  const queueItems = leads.map((lead) => {
+  const queueItems = leadsToQueue.map((lead) => {
     // If daily limit hit, jump to next business day
     if (dailyLimit && countToday >= dailyLimit) {
       scheduled = advanceToNextBusinessDay(new Date(scheduled));
@@ -347,6 +359,19 @@ router.post('/:id/disparar-massa', async (req, res) => {
   if (insertErr) return res.status(500).json({ error: insertErr.message });
 
   return res.json({ queued: queueItems.length });
+});
+
+// POST /:id/cancelar-fila — cancels all pending+processing+paused items immediately
+router.post('/:id/cancelar-fila', async (req, res) => {
+  const { error, count } = await supabase
+    .from('send_queue')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('campanha_id', req.params.id)
+    .in('status', ['pending', 'processing', 'paused'])
+    .select('id', { count: 'exact', head: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ message: 'Fila cancelada', cancelados: count || 0 });
 });
 
 // POST /:id/pausar

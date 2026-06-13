@@ -68,6 +68,7 @@ async function processQueue() {
       .select('*, campanhas(*), leads(*)')
       .eq('status', 'pending')
       .lte('scheduled_at', now)
+      .order('scheduled_at', { ascending: true })
       .limit(1);
 
     if (fetchErr) {
@@ -78,6 +79,19 @@ async function processQueue() {
     if (!items || items.length === 0) return;
 
     const item = items[0];
+
+    // Atomic lock: mark as 'processing' before doing anything — prevents double-send
+    const { count: locked } = await supabase
+      .from('send_queue')
+      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .eq('id', item.id)
+      .eq('status', 'pending') // only succeeds if still pending
+      .select('id', { count: 'exact', head: true });
+
+    if (!locked || locked === 0) {
+      // Another worker already grabbed this item
+      return;
+    }
 
     // Load campanha (may be embedded via join or we fetch separately)
     let campanha = item.campanhas;
@@ -181,6 +195,15 @@ async function processQueue() {
     // Auto-advance kanban to 'contatado' on first send
     if (!lead.kanban_stage || lead.kanban_stage === 'novo') {
       await supabase.from('leads').update({ kanban_stage: 'contatado', atualizado_em: new Date().toISOString() }).eq('id', lead.id);
+    }
+
+    // Guard: if lead already sent (by manual send or another worker), mark done and skip
+    if (lead.status === 'enviado') {
+      await supabase
+        .from('send_queue')
+        .update({ status: 'sent', updated_at: new Date().toISOString() })
+        .eq('id', item.id);
+      return;
     }
 
     // Send message — use campaign's assigned instance if set
