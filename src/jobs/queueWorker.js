@@ -81,15 +81,15 @@ async function processQueue() {
     const item = items[0];
 
     // Atomic lock: mark as 'processing' before doing anything — prevents double-send
-    const { count: locked } = await supabase
+    const { error: lockErr } = await supabase
       .from('send_queue')
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', item.id)
-      .eq('status', 'pending') // only succeeds if still pending
-      .select('id', { count: 'exact', head: true });
+      .eq('status', 'pending');
 
-    if (!locked || locked === 0) {
-      // Another worker already grabbed this item
+    if (lockErr) {
+      // Another worker already grabbed this item or DB error
+      console.error('[queueWorker] lock error:', lockErr.message);
       return;
     }
 
