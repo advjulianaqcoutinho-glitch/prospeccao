@@ -262,28 +262,36 @@ async function processQueue() {
       created_at: sentAt,
     }).catch((e) => console.error('[queueWorker] interaction insert error:', e.message));
 
-    // Upsert send_time_stats
+    // Upsert send_time_stats (best-effort, never blocks send)
     const nicho = campanha.nicho || lead.nicho || 'unknown';
-    await supabase.rpc('upsert_send_time_stats', {
-      p_nicho: nicho,
-      p_hour: hour,
-      p_day: day,
-    }).catch(async () => {
-      const { data: existing } = await supabase
-        .from('send_time_stats')
-        .select('id, total_sent')
-        .eq('nicho', nicho)
-        .eq('hour', hour)
-        .eq('day', day)
-        .single();
-      if (existing) {
-        await supabase.from('send_time_stats')
-          .update({ total_sent: (existing.total_sent || 0) + 1, updated_at: sentAt })
-          .eq('id', existing.id);
-      } else {
-        await supabase.from('send_time_stats').insert({ nicho, hour, day, total_sent: 1, created_at: sentAt, updated_at: sentAt });
+    try {
+      const { error: rpcErr } = await supabase.rpc('upsert_send_time_stats', {
+        p_nicho: nicho,
+        p_hour: hour,
+        p_day: day,
+      });
+      if (rpcErr) throw rpcErr;
+    } catch {
+      try {
+        const { data: existing } = await supabase
+          .from('send_time_stats')
+          .select('id, total_sent')
+          .eq('nicho', nicho)
+          .eq('hour', hour)
+          .eq('day', day)
+          .single();
+        if (existing) {
+          await supabase.from('send_time_stats')
+            .update({ total_sent: (existing.total_sent || 0) + 1, updated_at: sentAt })
+            .eq('id', existing.id);
+        } else {
+          await supabase.from('send_time_stats')
+            .insert({ nicho, hour, day, total_sent: 1, created_at: sentAt, updated_at: sentAt });
+        }
+      } catch (statsErr) {
+        console.error('[queueWorker] stats error:', statsErr.message);
       }
-    });
+    }
 
     console.log(`[queueWorker] Sent to ${lead.nome} (${lead.telefone})`);
 

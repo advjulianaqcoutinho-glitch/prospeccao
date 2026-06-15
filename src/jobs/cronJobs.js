@@ -80,6 +80,11 @@ function init() {
   // Start followup worker (setInterval-based, every 5min)
   followupWorker.start();
 
+  // Reset daily counts on startup (handles server restarts mid-day)
+  evolutionService.resetDailyCounts().catch((err) =>
+    console.error('[cronJobs] startup resetDailyCounts error:', err.message)
+  );
+
   // Every minute: process scheduled sends (backwards compat)
   cron.schedule('* * * * *', () => {
     processScheduledLeads().catch((err) =>
