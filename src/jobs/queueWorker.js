@@ -202,127 +202,98 @@ async function processQueue() {
     }
 
     // Send message — use campaign's assigned instance if set
+    let sendResult = null;
+    let sendErr = null;
     try {
-      const sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem, campanha.whatsapp_instance_id || null);
-
-      const sentAt = new Date().toISOString();
-      const hour = new Date().getHours();
-      const day = new Date().getDay(); // 0=Sun
-
-      // Update queue item
-      await supabase
-        .from('send_queue')
-        .update({ status: 'sent', sent_at: sentAt, updated_at: sentAt })
-        .eq('id', item.id);
-
-      // Update lead status
-      await supabase
-        .from('leads')
-        .update({ status: 'enviado', enviado_em: sentAt, atualizado_em: sentAt })
-        .eq('id', lead.id);
-
-      // Insert interaction
-      await supabase.from('interactions').insert({
-        lead_id: lead.id,
-        campanha_id: campanha.id,
-        type: 'message_sent',
-        message_id: sendResult.messageId || null,
-        instance_id: sendResult.instanceUsed || null,
-        created_at: sentAt,
-      });
-
-      // Upsert send_time_stats
-      const nicho = campanha.nicho || lead.nicho || 'unknown';
-      await supabase.rpc('upsert_send_time_stats', {
-        p_nicho: nicho,
-        p_hour: hour,
-        p_day: day,
-      }).catch(async () => {
-        // Fallback manual upsert if RPC not available
-        const { data: existing } = await supabase
-          .from('send_time_stats')
-          .select('id, total_sent')
-          .eq('nicho', nicho)
-          .eq('hour', hour)
-          .eq('day', day)
-          .single();
-
-        if (existing) {
-          await supabase
-            .from('send_time_stats')
-            .update({ total_sent: (existing.total_sent || 0) + 1, updated_at: sentAt })
-            .eq('id', existing.id);
-        } else {
-          await supabase.from('send_time_stats').insert({
-            nicho,
-            hour,
-            day,
-            total_sent: 1,
-            created_at: sentAt,
-            updated_at: sentAt,
-          });
-        }
-      });
-
-      console.log(`[queueWorker] Sent to ${lead.nome} (${lead.telefone})`);
-
-      ws.broadcast({
-        tipo: 'queue_progress',
-        leadId: lead.id,
-        nome: lead.nome,
-        status: 'sent',
-        campanhaId: campanha.id,
-      });
-    } catch (sendErr) {
-      console.error('[queueWorker] send error:', sendErr.message);
-
-      // Number not on WhatsApp — mark lead and don't retry
-      if (sendErr.code === 'NO_WHATSAPP') {
-        await supabase.from('send_queue')
-          .update({ status: 'failed', last_error: 'Número não tem WhatsApp', updated_at: new Date().toISOString() })
-          .eq('id', item.id);
-        await supabase.from('leads')
-          .update({ status: 'sem_whatsapp', atualizado_em: new Date().toISOString() })
-          .eq('id', lead.id);
-        ws.broadcast({ tipo: 'queue_progress', leadId: lead.id, nome: lead.nome, status: 'failed', campanhaId: campanha.id, error: 'Sem WhatsApp' });
-        return;
-      }
-
-      const attempts = (item.attempt_count || 0) + 1;
-      const now5min = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-      if (attempts >= 3) {
-        await supabase
-          .from('send_queue')
-          .update({
-            status: 'failed',
-            attempt_count: attempts,
-            last_error: sendErr.message,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', item.id);
-
-        ws.broadcast({
-          tipo: 'queue_progress',
-          leadId: lead.id,
-          nome: lead.nome,
-          status: 'failed',
-          campanhaId: campanha.id,
-          error: sendErr.message,
-        });
-      } else {
-        await supabase
-          .from('send_queue')
-          .update({
-            status: 'pending',
-            attempt_count: attempts,
-            last_error: sendErr.message,
-            scheduled_at: now5min,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', item.id);
-      }
+      sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem, campanha.whatsapp_instance_id || null);
+    } catch (err) {
+      sendErr = err;
     }
+
+    // Number not on WhatsApp — mark lead and don't retry
+    if (sendErr?.code === 'NO_WHATSAPP') {
+      await supabase.from('send_queue')
+        .update({ status: 'failed', last_error: 'Número não tem WhatsApp', updated_at: new Date().toISOString() })
+        .eq('id', item.id);
+      await supabase.from('leads')
+        .update({ status: 'sem_whatsapp', atualizado_em: new Date().toISOString() })
+        .eq('id', lead.id);
+      ws.broadcast({ tipo: 'queue_progress', leadId: lead.id, nome: lead.nome, status: 'failed', campanhaId: campanha.id, error: 'Sem WhatsApp' });
+      return;
+    }
+
+    if (sendErr) {
+      // Message failed to send — retry up to 3 times
+      console.error('[queueWorker] send error:', sendErr.message);
+      const attempts = (item.attempt_count || 0) + 1;
+      if (attempts >= 3) {
+        await supabase.from('send_queue')
+          .update({ status: 'failed', attempt_count: attempts, last_error: sendErr.message, updated_at: new Date().toISOString() })
+          .eq('id', item.id);
+        ws.broadcast({ tipo: 'queue_progress', leadId: lead.id, nome: lead.nome, status: 'failed', campanhaId: campanha.id, error: sendErr.message });
+      } else {
+        const retry = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        await supabase.from('send_queue')
+          .update({ status: 'pending', attempt_count: attempts, last_error: sendErr.message, scheduled_at: retry, updated_at: new Date().toISOString() })
+          .eq('id', item.id);
+      }
+      return;
+    }
+
+    // Message sent — update DB records (errors here do NOT retry the send)
+    const sentAt = new Date().toISOString();
+    const hour = new Date().getHours();
+    const day = new Date().getDay();
+
+    await supabase.from('send_queue')
+      .update({ status: 'sent', sent_at: sentAt, updated_at: sentAt })
+      .eq('id', item.id);
+
+    await supabase.from('leads')
+      .update({ status: 'enviado', enviado_em: sentAt, atualizado_em: sentAt })
+      .eq('id', lead.id);
+
+    await supabase.from('interactions').insert({
+      lead_id: lead.id,
+      campanha_id: campanha.id,
+      type: 'message_sent',
+      message_id: sendResult.messageId || null,
+      instance_id: sendResult.instanceUsed || null,
+      created_at: sentAt,
+    }).catch((e) => console.error('[queueWorker] interaction insert error:', e.message));
+
+    // Upsert send_time_stats
+    const nicho = campanha.nicho || lead.nicho || 'unknown';
+    await supabase.rpc('upsert_send_time_stats', {
+      p_nicho: nicho,
+      p_hour: hour,
+      p_day: day,
+    }).catch(async () => {
+      const { data: existing } = await supabase
+        .from('send_time_stats')
+        .select('id, total_sent')
+        .eq('nicho', nicho)
+        .eq('hour', hour)
+        .eq('day', day)
+        .single();
+      if (existing) {
+        await supabase.from('send_time_stats')
+          .update({ total_sent: (existing.total_sent || 0) + 1, updated_at: sentAt })
+          .eq('id', existing.id);
+      } else {
+        await supabase.from('send_time_stats').insert({ nicho, hour, day, total_sent: 1, created_at: sentAt, updated_at: sentAt });
+      }
+    });
+
+    console.log(`[queueWorker] Sent to ${lead.nome} (${lead.telefone})`);
+
+    ws.broadcast({
+      tipo: 'queue_progress',
+      leadId: lead.id,
+      nome: lead.nome,
+      status: 'sent',
+      campanhaId: campanha.id,
+    });
   } catch (err) {
     console.error('[queueWorker] unexpected error:', err.message);
   }
