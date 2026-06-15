@@ -626,6 +626,10 @@ textarea{resize:vertical;min-height:72px}
       <button class="btn btn-outline btn-sm" onclick="toggleVariante('b')" id="btn-var-b">Versão B</button>
     </div>
     <textarea id="msg-text" rows="8" style="margin-bottom:10px"></textarea>
+    <div class="form-group" style="margin-bottom:10px">
+      <label style="font-size:12px;color:var(--text-m)">Instância WhatsApp para envio</label>
+      <select id="msg-instance-id" style="width:100%"><option value="">— Padrão da campanha —</option></select>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('modal-msg')">Cancelar</button>
       <button class="btn btn-outline" onclick="regenerarMsg(this)">🔄 Regenerar IA</button>
@@ -845,6 +849,10 @@ textarea{resize:vertical;min-height:72px}
           <label>Intervalo máximo (segundos)</label>
           <input type="number" id="dw-dmax" value="180" min="30">
         </div>
+      </div>
+      <div class="form-group">
+        <label>Instância WhatsApp para envio</label>
+        <select id="dw-instance-id" style="width:100%"><option value="">— Padrão da campanha —</option></select>
       </div>
       <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-m);line-height:1.6">
         💡 <strong>Dica de segurança:</strong> Cada lead recebe uma mensagem única gerada pela IA durante a prospecção. Intervalos variados e aleatórios simulam comportamento humano e reduzem o risco de detecção.
@@ -1361,6 +1369,17 @@ async function dispararMassa(id, btn) {
     }
     dwGoStep(1);
     dwUpdateRisk();
+    // Populate instance selector
+    var sel = document.getElementById('dw-instance-id');
+    sel.innerHTML = '<option value="">— Padrão da campanha —</option>';
+    try {
+      var insts = await api('GET','/whatsapp/instances') || [];
+      insts.filter(function(i){return i.active!==false;}).forEach(function(i){
+        var o = document.createElement('option');
+        o.value = i.id; o.textContent = (i.display_name||i.instance_name) + (i.status==='connected'?' ✅':'');
+        sel.appendChild(o);
+      });
+    } catch(e2) {}
     openModal('modal-disparar-wizard');
   } catch(e){toast('Erro: '+e.message,'error');}
   btn.disabled=false; btn.innerHTML='📤 Massa';
@@ -1491,8 +1510,10 @@ async function dwConfirmar(btn) {
   var dmax = parseInt(document.getElementById('dw-dmax').value)||180;
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
   try {
+    var instId = document.getElementById('dw-instance-id').value;
     var body = {daily_limit:daily, delay_min:dmin, delay_max:dmax};
     if (dwSelectedLeadIds && dwSelectedLeadIds.length) body.lead_ids = dwSelectedLeadIds;
+    if (instId) body.whatsapp_instance_id = instId;
     var r = await api('POST','/campanhas/'+id+'/disparar-massa', body);
     closeModal('modal-disparar-wizard');
     dwSelectedLeadIds = null;
@@ -1837,7 +1858,7 @@ async function dispararSelecionados() {
   dwUpdateRisk();
   openModal('modal-disparar-wizard');
 }
-function openMsgModal(leadId) {
+async function openMsgModal(leadId) {
   var l = leadsCache[leadId];
   if (!l) return;
   currentLead = l; varianteAtiva='a';
@@ -1846,6 +1867,17 @@ function openMsgModal(leadId) {
   document.getElementById('msg-text').value = l.mensagem_gerada||'';
   document.getElementById('btn-var-a').style.borderColor='var(--purple)';
   document.getElementById('btn-var-b').style.borderColor='';
+  // Populate instance selector
+  var sel = document.getElementById('msg-instance-id');
+  sel.innerHTML = '<option value="">— Padrão da campanha —</option>';
+  try {
+    var insts = await api('GET','/whatsapp/instances') || [];
+    insts.filter(function(i){return i.active!==false;}).forEach(function(i){
+      var o = document.createElement('option');
+      o.value = i.id; o.textContent = (i.display_name||i.instance_name) + (i.status==='connected'?' ✅':'');
+      sel.appendChild(o);
+    });
+  } catch(e) {}
   openModal('modal-msg');
 }
 
@@ -1879,7 +1911,8 @@ async function salvarEEnviar(btn) {
   try {
     var body = varianteAtiva==='a' ? {mensagem_gerada:txt} : {mensagem_variante_b:txt};
     await api('PATCH','/leads/'+id, body);
-    await api('POST','/leads/'+id+'/disparar');
+    var instId = document.getElementById('msg-instance-id').value;
+    await api('POST','/leads/'+id+'/disparar', instId ? {whatsapp_instance_id: instId} : {});
     toast('Mensagem salva e enviada!','success');
     closeModal('modal-msg');
     loadLeads();

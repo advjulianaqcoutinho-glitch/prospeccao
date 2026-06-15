@@ -205,7 +205,8 @@ async function processQueue() {
     let sendResult = null;
     let sendErr = null;
     try {
-      sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem, campanha.whatsapp_instance_id || null);
+      const instanceId = item.whatsapp_instance_id || campanha.whatsapp_instance_id || null;
+      sendResult = await evolutionService.enviarMensagem(lead.telefone, mensagem, instanceId);
     } catch (err) {
       sendErr = err;
     }

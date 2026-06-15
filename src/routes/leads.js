@@ -188,7 +188,8 @@ router.post('/:id/disparar', async (req, res) => {
   }
 
   try {
-    await evolutionService.enviarMensagem(lead.telefone, lead.mensagem_gerada);
+    const instanceId = req.body?.whatsapp_instance_id || null;
+    await evolutionService.enviarMensagem(lead.telefone, lead.mensagem_gerada, instanceId);
 
     const now = new Date().toISOString();
     await Promise.all([

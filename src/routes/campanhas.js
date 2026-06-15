@@ -290,6 +290,7 @@ router.post('/:id/disparar-massa', async (req, res) => {
   const bizStartH = parseInt(campanha.business_hours_start) || 8;
   const bizEndH = parseInt(campanha.business_hours_end) || 18;
   const dailyLimit = parseInt(req.body.daily_limit) || null;
+  const overrideInstanceId = req.body.whatsapp_instance_id || null;
 
   let scheduled = new Date();
 
@@ -350,6 +351,7 @@ router.post('/:id/disparar-massa', async (req, res) => {
       scheduled_at: scheduled.toISOString(),
       status: 'pending',
       type: 'initial',
+      whatsapp_instance_id: overrideInstanceId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
