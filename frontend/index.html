@@ -630,6 +630,7 @@ textarea{resize:vertical;min-height:72px}
       <button class="btn btn-outline" onclick="closeModal('modal-msg')">Cancelar</button>
       <button class="btn btn-outline" onclick="regenerarMsg(this)">🔄 Regenerar IA</button>
       <button class="btn btn-primary" onclick="salvarMsg(this)">💾 Salvar</button>
+      <button class="btn btn-success" onclick="salvarEEnviar(this)">📤 Salvar e Enviar</button>
     </div>
   </div>
 </div>
@@ -1870,6 +1871,22 @@ async function salvarMsg(btn) {
     loadLeads();
   } catch(e){toast('Erro: '+e.message,'error');}
   btn.disabled=false;
+}
+
+async function salvarEEnviar(btn) {
+  var id = document.getElementById('msg-lead-id').value;
+  var txt = document.getElementById('msg-text').value;
+  if (!txt.trim()) { toast('Mensagem vazia','error'); return; }
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  try {
+    var body = varianteAtiva==='a' ? {mensagem_gerada:txt} : {mensagem_variante_b:txt};
+    await api('PATCH','/leads/'+id, body);
+    await api('POST','/leads/'+id+'/disparar');
+    toast('Mensagem salva e enviada!','success');
+    closeModal('modal-msg');
+    loadLeads();
+  } catch(e){toast('Erro: '+e.message,'error');}
+  btn.disabled=false; btn.innerHTML='📤 Salvar e Enviar';
 }
 
 async function regenerarMsg(btn) {

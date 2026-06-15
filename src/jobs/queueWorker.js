@@ -109,19 +109,20 @@ async function processQueue() {
       return;
     }
 
-    // Business hours check
+    // Business hours check — revert to pending instead of leaving stuck as 'processing'
     if (campanha.business_hours_enabled) {
       if (!isBusinessHours(campanha)) {
-        console.log('[queueWorker] Outside business hours, skipping.');
+        console.log('[queueWorker] Outside business hours, reverting to pending.');
+        await supabase.from('send_queue')
+          .update({ status: 'pending', updated_at: new Date().toISOString() })
+          .eq('id', item.id);
         return;
       }
     }
 
-    // Warm-up limit check
+    // Warm-up limit check — revert to pending instead of leaving stuck as 'processing'
     if (campanha.warmup_enabled) {
       const allowedToday = calcWarmupLimit(campanha);
-
-      // Count how many have been sent today for this campanha
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
@@ -133,7 +134,10 @@ async function processQueue() {
         .gte('sent_at', todayStart.toISOString());
 
       if ((sentToday || 0) >= allowedToday) {
-        console.log(`[queueWorker] Warm-up limit reached (${sentToday}/${allowedToday}), skipping.`);
+        console.log(`[queueWorker] Warm-up limit reached (${sentToday}/${allowedToday}), reverting to pending.`);
+        await supabase.from('send_queue')
+          .update({ status: 'pending', updated_at: new Date().toISOString() })
+          .eq('id', item.id);
         return;
       }
     }
@@ -195,15 +199,6 @@ async function processQueue() {
     // Auto-advance kanban to 'contatado' on first send
     if (!lead.kanban_stage || lead.kanban_stage === 'novo') {
       await supabase.from('leads').update({ kanban_stage: 'contatado', atualizado_em: new Date().toISOString() }).eq('id', lead.id);
-    }
-
-    // Guard: if lead already sent (by manual send or another worker), mark done and skip
-    if (lead.status === 'enviado') {
-      await supabase
-        .from('send_queue')
-        .update({ status: 'sent', updated_at: new Date().toISOString() })
-        .eq('id', item.id);
-      return;
     }
 
     // Send message — use campaign's assigned instance if set
