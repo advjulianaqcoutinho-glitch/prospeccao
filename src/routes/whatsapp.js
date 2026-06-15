@@ -19,7 +19,7 @@ router.get('/instances', async (req, res) => {
 
 // POST /instances
 router.post('/instances', async (req, res) => {
-  const { display_name, instance_name, daily_limit } = req.body || {};
+  const { display_name, instance_name, daily_limit, api_key } = req.body || {};
   if (!instance_name) {
     return res.status(400).json({ error: 'instance_name is required' });
   }
@@ -29,6 +29,7 @@ router.post('/instances', async (req, res) => {
     .insert({
       display_name: display_name || instance_name,
       instance_name,
+      api_key: api_key || null,
       daily_limit: daily_limit || 200,
       active: true,
       created_at: new Date().toISOString(),

@@ -12,6 +12,16 @@ const evolutionApi = axios.create({
   },
 });
 
+function instanceApi(apiKey) {
+  return axios.create({
+    baseURL: config.EVOLUTION_API_URL,
+    headers: {
+      apikey: apiKey || config.EVOLUTION_API_KEY,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 async function getInstances() {
   const { data, error } = await supabase
     .from('whatsapp_instances')
@@ -55,7 +65,8 @@ async function enviarMensagem(telefone, mensagem, instanceId = null) {
 
   let response;
   try {
-    response = await evolutionApi.post(`/message/sendText/${instance.instance_name}`, {
+    const api = instanceApi(instance.api_key);
+    response = await api.post(`/message/sendText/${instance.instance_name}`, {
       number: telefone,
       text: mensagem,
     });
@@ -97,13 +108,14 @@ async function enviarMensagem(telefone, mensagem, instanceId = null) {
 async function checkStatus(instanceId) {
   const { data: instance, error } = await supabase
     .from('whatsapp_instances')
-    .select('instance_name')
+    .select('instance_name, api_key')
     .eq('id', instanceId)
     .single();
 
   if (error) throw new Error(`checkStatus: ${error.message}`);
 
-  const response = await evolutionApi.get(
+  const api = instanceApi(instance.api_key);
+  const response = await api.get(
     `/instance/connectionState/${instance.instance_name}`
   );
 

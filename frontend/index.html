@@ -678,11 +678,9 @@ textarea{resize:vertical;min-height:72px}
 <div class="modal-overlay" id="modal-wa-inst" style="display:none" onclick="closeOuter(event,'modal-wa-inst')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">💬 Nova Instância WhatsApp</div>
-    <div style="font-size:12px;color:var(--text-m);margin-bottom:12px;background:rgba(124,58,237,.08);padding:8px 12px;border-radius:8px">
-      💡 A URL e chave da Evolution API são configuradas globalmente nas variáveis de ambiente do servidor. Aqui você registra os números (instâncias) para rotear envios.
-    </div>
     <div class="form-group"><label>Nome amigável</label><input id="wi-nome" placeholder="Ex: Número Principal, Número 2..."></div>
-    <div class="form-group"><label>Instance Name (Evolution API)</label><input id="wi-inst" placeholder="igor"></div>
+    <div class="form-group"><label>Instance Name (Evolution API)</label><input id="wi-inst" placeholder="igor47"></div>
+    <div class="form-group"><label>API Key da instância (Evolution API)</label><input id="wi-apikey" placeholder="5FCE1586020E-4D47-AC51-22DB6AA3E2AB"></div>
     <div class="form-group"><label>Limite diário de envios</label><input type="number" id="wi-limit" value="200"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('modal-wa-inst')">Cancelar</button>
@@ -2184,7 +2182,7 @@ async function salvarInstancia(btn) {
   if(!nome||!inst){toast('Preencha nome e instance name','error');return;}
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
   try{
-    await api('POST','/whatsapp/instances',{display_name:nome,instance_name:inst,daily_limit:parseInt(val('wi-limit'))||200});
+    await api('POST','/whatsapp/instances',{display_name:nome,instance_name:inst,api_key:val('wi-apikey')||null,daily_limit:parseInt(val('wi-limit'))||200});
     closeModal('modal-wa-inst');toast('Instância salva!','success');loadWAInstances();
   }catch(e){toast('Erro: '+e.message,'error');}
   btn.disabled=false;btn.innerHTML='Salvar';
