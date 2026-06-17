@@ -227,6 +227,7 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item" onclick="nav('fila',this)"><span class="nav-icon">⏳</span>Fila de Envios</div>
     <div class="nav-item" onclick="nav('templates',this)"><span class="nav-icon">📝</span>Templates</div>
     <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">📱</span>WhatsApp</div>
+    <div class="nav-item" onclick="nav('instagram',this)"><span class="nav-icon">📸</span>Instagram</div>
     <div class="nav-item" onclick="nav('blacklist',this)"><span class="nav-icon">⛔</span>Blacklist</div>
     <div class="nav-item" onclick="nav('scoring',this)"><span class="nav-icon">🎯</span>Scoring</div>
     <div class="nav-item" onclick="nav('instagram',this)"><span class="nav-icon">📸</span>Instagram</div>
@@ -398,6 +399,36 @@ textarea{resize:vertical;min-height:72px}
         <button class="btn btn-primary" onclick="openModal('modal-wa-inst')">＋ Nova Instância</button>
       </div>
       <div id="wa-instances-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+    </div>
+
+    <!-- INSTAGRAM -->
+    <div class="page" id="page-instagram">
+      <div class="sec-header">
+        <div class="sec-title">📸 Instagram Leads</div>
+        <button class="btn btn-primary" onclick="openModal('modal-ig-extrair')" style="background:#e1306c;border-color:#e1306c">+ Extrair Leads</button>
+      </div>
+      <!-- Stats -->
+      <div id="ig-stats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"></div>
+      <!-- Filter tabs -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-xs ig-tab" style="background:rgba(225,48,108,.2);color:#e1306c;border:1px solid rgba(225,48,108,.4)" onclick="setIgFilter('todos',this)">Todos</button>
+        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('pendente',this)">Não contatados</button>
+        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('contatado',this)">✅ Contatados</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="table">
+          <thead><tr>
+            <th>Perfil</th>
+            <th>Bio</th>
+            <th>Seguidores</th>
+            <th>Contato</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr></thead>
+          <tbody id="ig-leads-tbody"></tbody>
+        </table>
+        <div id="ig-empty" class="empty" style="display:none"><div class="empty-icon">📸</div><p>Nenhum lead Instagram ainda.<br>Clique em "+ Extrair Leads" para começar.</p></div>
+      </div>
     </div>
 
     <!-- BLACKLIST -->

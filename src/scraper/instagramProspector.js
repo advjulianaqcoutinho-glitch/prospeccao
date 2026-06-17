@@ -12,9 +12,9 @@ function sendProgress(data) {
   }
 }
 
-async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite, contexto }) {
+async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite }) {
   try {
-    sendProgress({ tipo: 'inicio', mensagem: `Iniciando extração Instagram: "${palavraChave}"` });
+    sendProgress({ tipo: 'inicio', mensagem: 'Iniciando extração Instagram: "' + palavraChave + '"' });
 
     const { data: campanha, error: campanhaErr } = await supabase
       .from('campanhas')
@@ -23,7 +23,7 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite, c
       .single();
 
     if (campanhaErr || !campanha) {
-      throw new Error(`Campanha não encontrada: ${campanhaErr ? campanhaErr.message : campanhaId}`);
+      throw new Error('Campanha não encontrada: ' + (campanhaErr ? campanhaErr.message : campanhaId));
     }
 
     const { data: perfilRows } = await supabase.from('user_profile').select('*').limit(1);
@@ -33,132 +33,82 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite, c
 
     const perfis = await scrapeInstagram(palavraChave, limite || 20);
 
-    sendProgress({
-      tipo: 'scraping_concluido',
-      mensagem: `${perfis.length} perfis encontrados no Instagram`,
-      total: perfis.length,
-    });
+    sendProgress({ tipo: 'scraping_concluido', mensagem: perfis.length + ' perfis encontrados', total: perfis.length });
 
     let salvos = 0;
     let erros = 0;
 
     for (let i = 0; i < perfis.length; i++) {
-      const perfil_ig = perfis[i];
+      const p = perfis[i];
 
       try {
         sendProgress({
           tipo: 'processando',
-          mensagem: `Processando @${perfil_ig.instagram_username}`,
+          mensagem: 'Salvando @' + p.instagram_username,
           atual: i + 1,
           total: perfis.length,
-          empresa_nome: perfil_ig.nome,
-          empresa_telefone: perfil_ig.telefone || null,
+          empresa_nome: p.nome,
+          empresa_telefone: p.telefone || null,
         });
 
-        // Dedup by instagram_username
         const { data: existing } = await supabase
           .from('leads')
           .select('id')
-          .eq('instagram_username', perfil_ig.instagram_username)
+          .eq('instagram_username', p.instagram_username)
           .limit(1);
 
         if (existing && existing.length > 0) {
-          sendProgress({
-            tipo: 'lead_duplicado',
-            mensagem: `⏭ @${perfil_ig.instagram_username} já existe na base`,
-            atual: i + 1,
-            total: perfis.length,
-            empresa_nome: perfil_ig.nome,
-          });
+          sendProgress({ tipo: 'lead_duplicado', mensagem: '⏭ @' + p.instagram_username + ' já existe', atual: i + 1, total: perfis.length, empresa_nome: p.nome });
           continue;
         }
 
-        // Generate personalized message using bio as context
-        const contextoIA = [
-          contexto || campanha.contexto || '',
-          perfil_ig.bio ? `Bio do perfil: ${perfil_ig.bio}` : '',
-        ].filter(Boolean).join('\n');
-
         let mensagemGerada = null;
-        try {
-          mensagemGerada = await aiService.gerarMensagem(
-            perfil_ig.nome,
-            campanha.nicho || palavraChave,
-            contextoIA,
-            perfil,
-            'a',
-            {}
-          );
-        } catch (aiErr) {
-          console.error('[instagramProspector] AI error:', aiErr.message);
+        if (p.telefone) {
+          try {
+            const contextoIA = [campanha.contexto || '', p.bio ? 'Bio: ' + p.bio : ''].filter(Boolean).join('\n');
+            mensagemGerada = await aiService.gerarMensagem(p.nome, campanha.nicho || palavraChave, contextoIA, perfil, 'a', {});
+          } catch (aiErr) {
+            console.error('[instagramProspector] AI error:', aiErr.message);
+          }
         }
 
         const now = new Date().toISOString();
-        const leadRow = {
+        const { error: insertErr } = await supabase.from('leads').insert({
           campanha_id: campanhaId,
-          nome: perfil_ig.nome,
-          telefone: perfil_ig.telefone || null,
-          email: perfil_ig.email || null,
-          instagram_username: perfil_ig.instagram_username,
-          instagram_url: perfil_ig.instagram_url,
-          bio: perfil_ig.bio || null,
-          followers_count: perfil_ig.followers_count || null,
+          nome: p.nome,
+          telefone: p.telefone || null,
+          email: p.email || null,
+          instagram_username: p.instagram_username,
+          instagram_url: p.instagram_url,
+          bio: p.bio || null,
+          followers_count: p.followers_count || null,
           mensagem_gerada: mensagemGerada,
-          status: perfil_ig.telefone ? 'pendente' : 'sem_telefone',
+          status: p.telefone ? 'pendente' : 'sem_telefone',
           fonte: 'instagram',
-          cidade: campanha.cidade || null,
           nicho: campanha.nicho || palavraChave,
           criado_em: now,
           atualizado_em: now,
-        };
+        });
 
-        const { error: insertErr } = await supabase.from('leads').insert(leadRow);
         if (insertErr) throw new Error(insertErr.message);
 
-        sendProgress({
-          tipo: 'lead_salvo',
-          mensagem: `✅ @${perfil_ig.instagram_username} salvo`,
-          atual: i + 1,
-          total: perfis.length,
-          empresa_nome: perfil_ig.nome,
-          empresa_telefone: perfil_ig.telefone || null,
-          salvos_ate_agora: salvos + 1,
-        });
-
+        sendProgress({ tipo: 'lead_salvo', mensagem: '✅ @' + p.instagram_username + ' salvo', atual: i + 1, total: perfis.length, empresa_nome: p.nome, empresa_telefone: p.telefone || null, salvos_ate_agora: salvos + 1 });
         salvos++;
       } catch (err) {
-        console.error(`[instagramProspector] Erro em @${perfil_ig.instagram_username}:`, err.message);
-        sendProgress({
-          tipo: 'lead_erro',
-          mensagem: `⚠️ Erro em @${perfil_ig.instagram_username}: ${err.message}`,
-          atual: i + 1,
-          total: perfis.length,
-          empresa_nome: perfil_ig.nome,
-        });
+        console.error('[instagramProspector] Erro @' + p.instagram_username + ':', err.message);
+        sendProgress({ tipo: 'lead_erro', mensagem: '⚠️ Erro em @' + p.instagram_username + ': ' + err.message, atual: i + 1, total: perfis.length, empresa_nome: p.nome });
         erros++;
       }
     }
 
-    await supabase
-      .from('campanhas')
-      .update({ status: 'pronta', atualizado_em: new Date().toISOString() })
-      .eq('id', campanhaId);
+    await supabase.from('campanhas').update({ status: 'pronta', atualizado_em: new Date().toISOString() }).eq('id', campanhaId);
 
-    sendProgress({
-      tipo: 'concluido',
-      mensagem: `Extração Instagram concluída. ${salvos} leads salvos, ${erros} erros.`,
-      salvos,
-      erros,
-    });
+    sendProgress({ tipo: 'concluido', mensagem: 'Extração concluída. ' + salvos + ' leads salvos, ' + erros + ' erros.', salvos, erros });
   } catch (err) {
     console.error('[instagramProspector] Erro fatal:', err.message);
     sendProgress({ tipo: 'erro', mensagem: err.message });
-
     try {
-      await supabase
-        .from('campanhas')
-        .update({ status: 'erro', atualizado_em: new Date().toISOString() })
-        .eq('id', campanhaId);
+      await supabase.from('campanhas').update({ status: 'erro', atualizado_em: new Date().toISOString() }).eq('id', campanhaId);
     } catch (_) {}
   }
 }
@@ -166,12 +116,7 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite, c
 const args = process.argv.slice(2);
 if (args.length > 0) {
   const params = JSON.parse(args[0]);
-  executarProspeccaoInstagram({
-    campanhaId: params.campanhaId,
-    palavraChave: params.palavraChave || params.nicho,
-    limite: params.limite,
-    contexto: params.contexto,
-  });
+  executarProspeccaoInstagram({ campanhaId: params.campanhaId, palavraChave: params.palavraChave || params.nicho, limite: params.limite });
 }
 
 module.exports = { executarProspeccaoInstagram };

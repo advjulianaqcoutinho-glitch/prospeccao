@@ -2,21 +2,31 @@
 
 const puppeteer = require('puppeteer');
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function extractContactFromBio(bio) {
   if (!bio) return { telefone: null, email: null };
-
   const emailMatch = bio.match(/[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}/);
   const email = emailMatch ? emailMatch[0] : null;
-
-  // Match Brazilian phone numbers in various formats
   const phoneMatch = bio.match(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\s?)?\d{4}[-.\s]?\d{4}/);
   const telefone = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : null;
-
   return { telefone, email };
 }
 
+function formatFollowers(str) {
+  if (!str) return null;
+  const n = parseFloat(str.replace(',', '.'));
+  if (isNaN(n)) return null;
+  const lower = str.toLowerCase();
+  if (lower.includes('k')) return Math.round(n * 1000);
+  if (lower.includes('m')) return Math.round(n * 1000000);
+  return Math.round(n);
+}
+
 async function scrapeInstagram(palavraChave, limit = 20) {
-  console.log(`[instagram] Buscando "${palavraChave}" via Bing...`);
+  console.log(`[instagram] Buscando "${palavraChave}" no Bing...`);
 
   const browser = await puppeteer.launch({
     headless: 'new',
@@ -36,6 +46,7 @@ async function scrapeInstagram(palavraChave, limit = 20) {
   });
 
   const results = [];
+  const skipList = ['p', 'reel', 'explore', 'accounts', 'stories', 'tv', 'ar', 'about', 'legal', 'help', 'press', 'api', 'blog', 'directory'];
 
   try {
     const page = await browser.newPage();
@@ -44,122 +55,82 @@ async function scrapeInstagram(palavraChave, limit = 20) {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
 
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1280, height: 900 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9' });
 
-    const searchUrl = `https://www.bing.com/search?q=site%3Ainstagram.com+%22${encodeURIComponent(palavraChave)}%22&count=30&setlang=pt-BR`;
-
-    console.log(`[instagram] Bing query: ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-
-    // Extract Instagram profile URLs from Bing results
-    const profileUrls = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a[href*="instagram.com/"]'));
-      const urls = [];
-      for (const link of links) {
-        const href = link.href;
-        const match = href.match(/https?:\/\/(www\.)?instagram\.com\/([^/?#]+)/);
-        if (match) {
-          const username = match[2];
-          if (!['p', 'reel', 'tv', 'stories', 'explore', 'accounts', 'directory'].includes(username)) {
-            urls.push(`https://www.instagram.com/${username}/`);
+    async function searchBing(startPage) {
+      const query = encodeURIComponent(`site:instagram.com "${palavraChave}"`);
+      const url = `https://www.bing.com/search?q=${query}&count=30&setlang=pt-BR&first=${startPage}`;
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await sleep(1500);
+      return page.evaluate((skip) => {
+        const links = new Set();
+        document.querySelectorAll('a[href]').forEach((a) => {
+          const match = (a.href || '').match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/);
+          if (match && !skip.includes(match[1]) && match[1].length > 1) {
+            links.add('https://www.instagram.com/' + match[1] + '/');
           }
-        }
-      }
-      return [...new Set(urls)];
-    });
-
-    console.log(`[instagram] Found ${profileUrls.length} profile links from Bing`);
-
-    if (profileUrls.length === 0) {
-      console.log('[instagram] No profiles found — Bing may have blocked or returned no results');
-      return results;
+        });
+        return [...links];
+      }, skip);
     }
 
-    for (const url of profileUrls.slice(0, limit)) {
+    let profileLinks = await searchBing(1);
+    if (profileLinks.length < limit) {
       try {
-        const profilePage = await browser.newPage();
-        await profilePage.setUserAgent(
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        );
-        await profilePage.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
+        const more = await searchBing(31);
+        more.forEach((l) => { if (!profileLinks.includes(l)) profileLinks.push(l); });
+      } catch (_) {}
+    }
 
-        const data = await profilePage.evaluate((profileUrl) => {
+    console.log(`[instagram] ${profileLinks.length} perfis encontrados`);
+    if (profileLinks.length === 0) return results;
+
+    const seen = new Set();
+    for (const profileUrl of profileLinks.slice(0, limit)) {
+      const username = profileUrl.replace(/https?:\/\/(?:www\.)?instagram\.com\//, '').replace(/\/$/, '');
+      if (seen.has(username)) continue;
+      seen.add(username);
+
+      try {
+        await sleep(1200 + Math.random() * 1300);
+        await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await sleep(800);
+
+        const data = await page.evaluate((url) => {
           const getMeta = (prop) => {
-            const el = document.querySelector(`meta[property="${prop}"]`) || document.querySelector(`meta[name="${prop}"]`);
+            const el = document.querySelector('meta[property="' + prop + '"], meta[name="' + prop + '"]');
             return el ? el.getAttribute('content') : null;
           };
           const ogTitle = getMeta('og:title') || document.title || '';
           const ogDesc = getMeta('og:description') || '';
-          const ogUrl = getMeta('og:url') || window.location.href;
-
-          // Extract username from URL
-          const urlMatch = ogUrl.match(/instagram\.com\/([^/?#]+)/);
-          const username = urlMatch ? urlMatch[1] : '';
-
-          // og:title format: "Nome do Perfil (@username) • Instagram"
+          const uname = url.replace(/https?:\/\/(?:www\.)?instagram\.com\//, '').replace(/\/$/, '').split('?')[0];
           const nameMatch = ogTitle.match(/^(.+?)\s*\(@/);
-          const nome = nameMatch ? nameMatch[1].trim() : ogTitle.split('•')[0].trim() || username;
-
-          // Extract followers from description (e.g. "1,234 Followers")
-          const followersMatch = ogDesc.match(/([\d,\.]+[KkMm]?)\s*[Ff]ollowers/);
-          const followersStr = followersMatch ? followersMatch[1] : null;
-          let followers = null;
-          if (followersStr) {
-            const n = parseFloat(followersStr.replace(/,/g, ''));
-            if (followersStr.toLowerCase().includes('k')) followers = Math.round(n * 1000);
-            else if (followersStr.toLowerCase().includes('m')) followers = Math.round(n * 1000000);
-            else followers = Math.round(n);
-          }
-
-          // Bio is everything after "Posts - " in og:description
+          const nome = nameMatch ? nameMatch[1].trim() : ogTitle.split('•')[0].split('(')[0].trim();
+          const followersMatch = ogDesc.match(/([\d,.]+[KkMm]?)\s*[Ff]ollowers/);
           const bioMatch = ogDesc.match(/Posts?\s*[-–]\s*(.+)$/s);
-          const bio = bioMatch ? bioMatch[1].trim() : ogDesc;
+          const bio = bioMatch ? bioMatch[1].trim() : (ogDesc.length > 10 ? ogDesc : null);
+          const isLoginWall = document.title.toLowerCase().includes('login') || window.location.href.includes('/accounts/login');
+          return { nome, username: uname, bio, followersStr: followersMatch ? followersMatch[1] : null, url, isLoginWall };
+        }, profileUrl);
 
-          const isLoginWall = document.title.toLowerCase().includes('login') ||
-            window.location.href.includes('/accounts/login');
-
-          return {
-            nome,
-            username,
-            bio,
-            followers_count: followers || 0,
-            instagram_url: ogUrl || profileUrl,
-            isLoginWall,
-          };
-        }, url);
-
-        if (data.isLoginWall) {
-          console.log(`[instagram] Login wall hit at ${url}, stopping`);
-          await profilePage.close();
-          break;
-        }
-
-        if (!data.username || !data.nome) {
-          console.log(`[instagram] Skipping ${url} — no data extracted`);
-          await profilePage.close();
-          continue;
-        }
+        if (data.isLoginWall) { console.log('[instagram] Login wall — parando'); break; }
+        if (!data.username || !data.nome || data.nome.length < 2) continue;
 
         const { telefone, email } = extractContactFromBio(data.bio);
-
         results.push({
           nome: data.nome,
           instagram_username: data.username,
-          instagram_url: data.instagram_url,
+          instagram_url: 'https://www.instagram.com/' + data.username + '/',
           bio: data.bio || null,
-          followers_count: data.followers_count || null,
+          followers_count: formatFollowers(data.followersStr),
           telefone: telefone || null,
           email: email || null,
         });
-
-        console.log(`[instagram] ✅ ${data.nome} (@${data.username}) — ${data.followers_count || '?'} seguidores`);
-        await profilePage.close();
+        console.log('[instagram] ✅ ' + data.nome + ' (@' + data.username + ')');
       } catch (err) {
-        console.error(`[instagram] Error visiting profile: ${url}`, err.message);
+        console.error('[instagram] Erro em ' + profileUrl + ':', err.message);
       }
     }
   } finally {
