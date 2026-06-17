@@ -67,28 +67,32 @@ router.post('/extrair', async (req, res) => {
     limite: Math.min(parseInt(limite) || 20, 50),
   });
 
-  const child = fork(scriptPath, [params], { detached: true, stdio: 'pipe' });
+  const child = fork(scriptPath, [params], { detached: false, stdio: 'pipe' });
 
   child.on('message', (msg) => {
+    console.log('[instagramRoute] msg:', JSON.stringify(msg).slice(0, 200));
     ws.broadcast({ ...msg, campanha_id: campanhaId });
+  });
+
+  child.stdout?.on('data', (data) => {
+    console.log('[instagramRoute:stdout]', data.toString().trim().slice(0, 300));
   });
 
   child.stderr?.on('data', (data) => {
     const text = data.toString().trim();
-    console.error(`[instagramRoute]`, text);
-    const isWarning = text.includes('Puppeteer') || text.includes('DevTools') || text.includes('GPU') || text.includes('NSS_VersionCheck');
+    const isWarning = text.includes('Puppeteer') || text.includes('DevTools') || text.includes('GPU') || text.includes('NSS_VersionCheck') || text.includes('--disable-dev-shm');
     if (!isWarning) {
+      console.error('[instagramRoute:stderr]', text.slice(0, 300));
       ws.broadcast({ tipo: 'erro', mensagem: text.slice(0, 200), campanha_id: campanhaId });
     }
   });
 
   child.on('exit', (code) => {
+    console.log(`[instagramRoute] processo encerrou com código ${code}`);
     if (code !== 0 && code !== null) {
       ws.broadcast({ tipo: 'erro', mensagem: `Instagram: processo encerrou (código ${code})`, campanha_id: campanhaId });
     }
   });
-
-  child.unref();
 
   return res.json({ ok: true, campanha_id: campanhaId });
 });
