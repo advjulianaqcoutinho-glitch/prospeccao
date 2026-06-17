@@ -246,7 +246,59 @@ router.post('/:id/prospectar', async (req, res) => {
   return res.json({ message: 'Prospecção iniciada', campanha_id: req.params.id });
 });
 
-// POST /:id/disparar-massa
+// POST /:id/prospectar-instagram
+router.post('/:id/prospectar-instagram', async (req, res) => {
+  const { data: campanha, error } = await supabase
+    .from('campanhas')
+    .select('*')
+    .eq('id', req.params.id)
+    .single();
+
+  if (error || !campanha) return res.status(404).json({ error: 'Campanha não encontrada' });
+
+  const palavraChave = req.body.palavra_chave || campanha.nicho;
+  const cidade = req.body.cidade || campanha.cidade;
+  const limite = parseInt(req.body.limite) || 20;
+
+  await supabase
+    .from('campanhas')
+    .update({ status: 'prospectando', atualizado_em: new Date().toISOString() })
+    .eq('id', req.params.id);
+
+  const scriptPath = path.resolve(__dirname, '../../src/scraper/instagramProspector.js');
+  const params = JSON.stringify({
+    campanhaId: req.params.id,
+    palavraChave,
+    cidade,
+    limite,
+    contexto: campanha.contexto,
+  });
+
+  const child = fork(scriptPath, [params], { detached: true, stdio: 'pipe' });
+
+  child.on('message', (msg) => {
+    ws.broadcast({ ...msg, campanha_id: req.params.id, campanha_nome: campanha.nome });
+  });
+
+  child.stderr?.on('data', (data) => {
+    const text = data.toString().trim();
+    console.error(`[instagramProspector:${req.params.id}]`, text);
+    const isWarning = text.includes('Puppeteer') || text.includes('DevTools') || text.includes('GPU') || text.includes('NSS_VersionCheck');
+    if (!isWarning) {
+      ws.broadcast({ tipo: 'erro', mensagem: text.slice(0, 200), campanha_id: req.params.id });
+    }
+  });
+
+  child.on('exit', (code) => {
+    if (code !== 0 && code !== null) {
+      ws.broadcast({ tipo: 'erro', mensagem: `Instagram: processo encerrou (código ${code})`, campanha_id: req.params.id });
+    }
+  });
+
+  child.unref();
+
+  return res.json({ message: 'Extração Instagram iniciada', campanha_id: req.params.id });
+});
 router.post('/:id/disparar-massa', async (req, res) => {
   const { data: campanha, error: campanhaErr } = await supabase
     .from('campanhas')

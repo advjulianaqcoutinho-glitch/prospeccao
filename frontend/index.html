@@ -820,6 +820,33 @@ textarea{resize:vertical;min-height:72px}
   </div>
 </div>
 
+<!-- MODAL INSTAGRAM -->
+<div class="modal-overlay" id="modal-instagram" style="display:none" onclick="closeOuter(event,'modal-instagram')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">📸 Extrair Leads do Instagram</div>
+    <div style="font-size:12px;color:var(--text-m);margin-bottom:14px;background:rgba(225,48,108,.08);padding:8px 12px;border-radius:8px;border:1px solid rgba(225,48,108,.2)">
+      🔍 Busca perfis públicos via Google (<code>site:instagram.com</code>) — sem login no Instagram.
+    </div>
+    <input type="hidden" id="ig-campanha-id">
+    <div class="form-group">
+      <label>Palavra-chave</label>
+      <input id="ig-palavra" placeholder="Ex: móveis planejados">
+    </div>
+    <div class="form-group">
+      <label>Cidade</label>
+      <input id="ig-cidade" placeholder="Ex: Curitiba">
+    </div>
+    <div class="form-group">
+      <label>Quantidade máxima de perfis</label>
+      <input type="number" id="ig-limite" value="20" min="5" max="50">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-instagram')">Cancelar</button>
+      <button class="btn btn-primary" onclick="iniciarInstagram(this)" style="background:#e1306c;border-color:#e1306c">📸 Iniciar Extração</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL DISPARAR WIZARD -->
 <div class="modal-overlay" id="modal-disparar-wizard" style="display:none" onclick="closeOuter(event,'modal-disparar-wizard')">
   <div class="modal modal-lg" onclick="event.stopPropagation()">
@@ -1241,7 +1268,7 @@ async function loadCampanhas() {
       <td>${bdg(c.status)}</td>
       <td style="font-size:11px;color:var(--text-m)">${fmt(c.criado_em)}</td>
       <td><div class="td-actions">
-        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Extrair</button>`:`<button class="btn btn-xs" onclick="abrirPainelAoVivo('${c.id}')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
+        ${c.status!=='prospectando'?`<button class="btn btn-primary btn-xs" onclick="prospectar('${c.id}',this)">🔍 Google</button><button class="btn btn-xs btn-instagram" onclick="abrirModalInstagram('${c.id}')" style="background:rgba(225,48,108,.15);color:#e1306c;border:1px solid rgba(225,48,108,.3)">📸 Instagram</button>`:`<button class="btn btn-xs" onclick="abrirPainelAoVivo('${c.id}')" style="background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3)">⏳ Ao vivo</button>`}
         <button class="btn btn-success btn-xs" onclick="dispararMassa('${c.id}',this)">📤 Massa</button>
         <button class="btn btn-outline btn-xs" onclick="openFollowup('${c.id}')">📅 FU</button>
         <button class="btn btn-xs" onclick="cancelarFila('${c.id}',this)" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)" title="Cancelar todos os envios pendentes">⏹ Parar</button>
@@ -1317,6 +1344,37 @@ async function abrirPainelAoVivo(id) {
   initLiveModal(campanha, salvosAtual);
   openModal('modal-prospeccao-live');
   startStuckWatcher();
+}
+
+function abrirModalInstagram(id) {
+  var campanha = campanhas.find(c=>c.id===id) || {};
+  document.getElementById('ig-campanha-id').value = id;
+  document.getElementById('ig-palavra').value = campanha.nicho || '';
+  document.getElementById('ig-cidade').value = campanha.cidade || '';
+  openModal('modal-instagram');
+}
+
+async function iniciarInstagram(btn) {
+  var id = document.getElementById('ig-campanha-id').value;
+  var palavra = document.getElementById('ig-palavra').value.trim();
+  var cidade = document.getElementById('ig-cidade').value.trim();
+  var limite = parseInt(document.getElementById('ig-limite').value) || 20;
+  if (!palavra || !cidade) { toast('Preencha palavra-chave e cidade','error'); return; }
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+  try {
+    var campanha = campanhas.find(c=>c.id===id) || {};
+    closeModal('modal-instagram');
+    initLiveModal(campanha, 0);
+    openModal('modal-prospeccao-live');
+    startStuckWatcher();
+    await api('POST','/campanhas/'+id+'/prospectar-instagram', {palavra_chave:palavra, cidade, limite});
+    toast('Extração Instagram iniciada!','success');
+    loadCampanhas();
+  } catch(e) {
+    toast('Erro: '+e.message,'error');
+    closeModal('modal-prospeccao-live');
+  }
+  btn.disabled=false; btn.innerHTML='📸 Iniciar Extração';
 }
 
 async function prospectar(id, btn) {
@@ -1774,8 +1832,8 @@ async function loadLeads() {
     leads.forEach(l=>{ leadsCache[l.id]=l; });
     tbody.innerHTML = leads.map(l=>`<tr data-lead-id="${l.id}" data-score="${l.score||0}" data-status="${l.status}" data-campanha="${l.campanha_id||''}">
       <td><input type="checkbox" class="lead-cb" value="${l.id}" onchange="onLeadCbChange()" style="width:auto;cursor:pointer"></td>
-      <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${esc(l.endereco||'')}</span></td>
-      <td style="color:var(--text-m);font-size:12px">${esc(l.telefone)}</td>
+      <td><strong>${esc(l.nome)}</strong><br><span style="font-size:11px;color:var(--text-m)">${l.instagram_username?`<a href="${esc(l.instagram_url)}" target="_blank" style="color:#e1306c;text-decoration:none">📸 @${esc(l.instagram_username)}</a>`:esc(l.endereco||'')}</span></td>
+      <td style="color:var(--text-m);font-size:12px">${l.telefone?esc(l.telefone):'<span style="color:var(--text-d);font-size:11px">—</span>'}</td>
       <td>${scoreBadge(l.score,l.score_breakdown)}</td>
       <td>${bdg(l.kanban_stage||'novo')}</td>
       <td>${bdg(l.status)}</td>
