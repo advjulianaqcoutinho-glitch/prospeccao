@@ -12,9 +12,9 @@ function sendProgress(data) {
   }
 }
 
-async function executarProspeccaoInstagram({ campanhaId, palavraChave, cidade, limite, contexto }) {
+async function executarProspeccaoInstagram({ campanhaId, palavraChave, limite, contexto }) {
   try {
-    sendProgress({ tipo: 'inicio', mensagem: `Iniciando extração Instagram: "${palavraChave}" em "${cidade}"` });
+    sendProgress({ tipo: 'inicio', mensagem: `Iniciando extração Instagram: "${palavraChave}"` });
 
     const { data: campanha, error: campanhaErr } = await supabase
       .from('campanhas')
@@ -31,7 +31,7 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, cidade, l
       ? perfilRows[0]
       : { nome: 'Prospector', empresa: '', descricao: '', tom_comunicacao: 'profissional' };
 
-    const perfis = await scrapeInstagram(palavraChave, cidade, limite || 20);
+    const perfis = await scrapeInstagram(palavraChave, limite || 20);
 
     sendProgress({
       tipo: 'scraping_concluido',
@@ -87,7 +87,7 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, cidade, l
             contextoIA,
             perfil,
             'a',
-            { cidade }
+            {}
           );
         } catch (aiErr) {
           console.error('[instagramProspector] AI error:', aiErr.message);
@@ -106,7 +106,7 @@ async function executarProspeccaoInstagram({ campanhaId, palavraChave, cidade, l
           mensagem_gerada: mensagemGerada,
           status: perfil_ig.telefone ? 'pendente' : 'sem_telefone',
           fonte: 'instagram',
-          cidade: campanha.cidade || cidade,
+          cidade: campanha.cidade || null,
           nicho: campanha.nicho || palavraChave,
           criado_em: now,
           atualizado_em: now,
@@ -169,7 +169,6 @@ if (args.length > 0) {
   executarProspeccaoInstagram({
     campanhaId: params.campanhaId,
     palavraChave: params.palavraChave || params.nicho,
-    cidade: params.cidade,
     limite: params.limite,
     contexto: params.contexto,
   });

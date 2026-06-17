@@ -269,7 +269,6 @@ router.post('/:id/prospectar-instagram', async (req, res) => {
   const params = JSON.stringify({
     campanhaId: req.params.id,
     palavraChave,
-    cidade,
     limite,
     contexto: campanha.contexto,
   });

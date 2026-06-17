@@ -2,10 +2,6 @@
 
 const puppeteer = require('puppeteer');
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 function extractContactFromBio(bio) {
   if (!bio) return { telefone: null, email: null };
 
@@ -19,8 +15,8 @@ function extractContactFromBio(bio) {
   return { telefone, email };
 }
 
-async function scrapeInstagram(palavraChave, cidade, limit = 20) {
-  console.log(`[instagram] Buscando "${palavraChave}" em "${cidade}"...`);
+async function scrapeInstagram(palavraChave, limit = 20) {
+  console.log(`[instagram] Buscando "${palavraChave}" via Bing...`);
 
   const browser = await puppeteer.launch({
     headless: 'new',
@@ -54,99 +50,97 @@ async function scrapeInstagram(palavraChave, cidade, limit = 20) {
     await page.setViewport({ width: 1280, height: 900 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9' });
 
-    // Step 1: Google search for Instagram profiles
-    const query = encodeURIComponent(`site:instagram.com "${palavraChave}" "${cidade}"`);
-    const googleUrl = `https://www.google.com/search?q=${query}&num=30&hl=pt-BR`;
+    const searchUrl = `https://www.bing.com/search?q=site%3Ainstagram.com+%22${encodeURIComponent(palavraChave)}%22&count=30&setlang=pt-BR`;
 
-    console.log(`[instagram] Google query: ${googleUrl}`);
-    await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await sleep(2000);
+    console.log(`[instagram] Bing query: ${searchUrl}`);
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Accept cookies if prompted
-    try {
-      const acceptBtn = await page.$('button[id="L2AGLb"], button[aria-label*="Aceitar"]');
-      if (acceptBtn) { await acceptBtn.click(); await sleep(1000); }
-    } catch (_) {}
-
-    // Extract Instagram profile URLs from Google results
-    const profileLinks = await page.evaluate(() => {
-      const links = new Set();
-      document.querySelectorAll('a[href]').forEach((a) => {
-        const href = a.href || '';
-        const match = href.match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/);
+    // Extract Instagram profile URLs from Bing results
+    const profileUrls = await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll('a[href*="instagram.com/"]'));
+      const urls = [];
+      for (const link of links) {
+        const href = link.href;
+        const match = href.match(/https?:\/\/(www\.)?instagram\.com\/([^/?#]+)/);
         if (match) {
-          const username = match[1];
-          // Skip Instagram's own pages
-          const skip = ['p', 'reel', 'explore', 'accounts', 'stories', 'tv', 'ar', 'about', 'legal', 'help', 'press', 'api', 'blog'];
-          if (!skip.includes(username) && username.length > 1) {
-            links.add(`https://www.instagram.com/${username}/`);
+          const username = match[2];
+          if (!['p', 'reel', 'tv', 'stories', 'explore', 'accounts', 'directory'].includes(username)) {
+            urls.push(`https://www.instagram.com/${username}/`);
           }
         }
-      });
-      return [...links];
+      }
+      return [...new Set(urls)];
     });
 
-    console.log(`[instagram] Found ${profileLinks.length} profile links from Google`);
+    console.log(`[instagram] Found ${profileUrls.length} profile links from Bing`);
 
-    if (profileLinks.length === 0) {
-      console.log('[instagram] No profiles found — Google may have shown captcha');
+    if (profileUrls.length === 0) {
+      console.log('[instagram] No profiles found — Bing may have blocked or returned no results');
       return results;
     }
 
-    // Step 2: Visit each profile to extract data
-    const toVisit = profileLinks.slice(0, limit);
-
-    for (const profileUrl of toVisit) {
+    for (const url of profileUrls.slice(0, limit)) {
       try {
-        await sleep(1500 + Math.random() * 1500);
+        const profilePage = await browser.newPage();
+        await profilePage.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
+        await profilePage.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
 
-        await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await sleep(1000);
-
-        const data = await page.evaluate((url) => {
-          // Try meta tags first (always available on public profiles)
+        const data = await profilePage.evaluate((profileUrl) => {
           const getMeta = (prop) => {
-            const el = document.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`);
+            const el = document.querySelector(`meta[property="${prop}"]`) || document.querySelector(`meta[name="${prop}"]`);
             return el ? el.getAttribute('content') : null;
           };
-
-          const ogTitle = getMeta('og:title') || '';
+          const ogTitle = getMeta('og:title') || document.title || '';
           const ogDesc = getMeta('og:description') || '';
-          const username = url.replace(/https?:\/\/(?:www\.)?instagram\.com\//, '').replace(/\/$/, '').split('?')[0];
+          const ogUrl = getMeta('og:url') || window.location.href;
+
+          // Extract username from URL
+          const urlMatch = ogUrl.match(/instagram\.com\/([^/?#]+)/);
+          const username = urlMatch ? urlMatch[1] : '';
 
           // og:title format: "Nome do Perfil (@username) • Instagram"
           const nameMatch = ogTitle.match(/^(.+?)\s*\(@/);
-          const nome = nameMatch ? nameMatch[1].trim() : ogTitle.split('•')[0].trim();
+          const nome = nameMatch ? nameMatch[1].trim() : ogTitle.split('•')[0].trim() || username;
 
-          // og:description format: "X Followers, Y Following, Z Posts - Bio text here"
-          const followersMatch = ogDesc.match(/([\d,.]+[KkMm]?)\s*[Ff]ollowers/);
+          // Extract followers from description (e.g. "1,234 Followers")
+          const followersMatch = ogDesc.match(/([\d,\.]+[KkMm]?)\s*[Ff]ollowers/);
           const followersStr = followersMatch ? followersMatch[1] : null;
           let followers = null;
           if (followersStr) {
-            const n = parseFloat(followersStr.replace(',', '.'));
+            const n = parseFloat(followersStr.replace(/,/g, ''));
             if (followersStr.toLowerCase().includes('k')) followers = Math.round(n * 1000);
             else if (followersStr.toLowerCase().includes('m')) followers = Math.round(n * 1000000);
             else followers = Math.round(n);
           }
 
-          // Bio is everything after the "Posts - " part in og:description
+          // Bio is everything after "Posts - " in og:description
           const bioMatch = ogDesc.match(/Posts?\s*[-–]\s*(.+)$/s);
           const bio = bioMatch ? bioMatch[1].trim() : ogDesc;
 
-          // Check if it's a login wall (Instagram redirected)
           const isLoginWall = document.title.toLowerCase().includes('login') ||
             window.location.href.includes('/accounts/login');
 
-          return { nome, username, bio, followers, url, isLoginWall };
-        }, profileUrl);
+          return {
+            nome,
+            username,
+            bio,
+            followers_count: followers || 0,
+            instagram_url: ogUrl || profileUrl,
+            isLoginWall,
+          };
+        }, url);
 
         if (data.isLoginWall) {
-          console.log(`[instagram] Login wall hit at ${profileUrl}, stopping`);
+          console.log(`[instagram] Login wall hit at ${url}, stopping`);
+          await profilePage.close();
           break;
         }
 
         if (!data.username || !data.nome) {
-          console.log(`[instagram] Skipping ${profileUrl} — no data extracted`);
+          console.log(`[instagram] Skipping ${url} — no data extracted`);
+          await profilePage.close();
           continue;
         }
 
@@ -155,16 +149,17 @@ async function scrapeInstagram(palavraChave, cidade, limit = 20) {
         results.push({
           nome: data.nome,
           instagram_username: data.username,
-          instagram_url: data.url,
+          instagram_url: data.instagram_url,
           bio: data.bio || null,
-          followers_count: data.followers || null,
+          followers_count: data.followers_count || null,
           telefone: telefone || null,
           email: email || null,
         });
 
-        console.log(`[instagram] ✅ ${data.nome} (@${data.username}) — ${data.followers || '?'} seguidores`);
+        console.log(`[instagram] ✅ ${data.nome} (@${data.username}) — ${data.followers_count || '?'} seguidores`);
+        await profilePage.close();
       } catch (err) {
-        console.error(`[instagram] Error visiting ${profileUrl}:`, err.message);
+        console.error(`[instagram] Error visiting profile: ${url}`, err.message);
       }
     }
   } finally {

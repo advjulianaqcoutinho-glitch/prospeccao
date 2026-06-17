@@ -21,6 +21,7 @@ const respostasRouter = require('./routes/respostas');
 const analyticsRouter = require('./routes/analytics');
 const importRouter = require('./routes/import');
 const scoringRouter = require('./routes/scoring');
+const instagramRouter = require('./routes/instagram');
 
 // ─── App factory ──────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ app.use('/api/respostas', respostasRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/scoring', scoringRouter);
+app.use('/api/instagram', instagramRouter);
 
 // ── Global error handler ─────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars

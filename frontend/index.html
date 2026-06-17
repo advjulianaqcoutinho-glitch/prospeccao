@@ -229,6 +229,7 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">📱</span>WhatsApp</div>
     <div class="nav-item" onclick="nav('blacklist',this)"><span class="nav-icon">⛔</span>Blacklist</div>
     <div class="nav-item" onclick="nav('scoring',this)"><span class="nav-icon">🎯</span>Scoring</div>
+    <div class="nav-item" onclick="nav('instagram',this)"><span class="nav-icon">📸</span>Instagram</div>
     <div class="nav-item" onclick="nav('config',this)"><span class="nav-icon">⚙️</span>Configurações</div>
   </nav>
   <div class="sidebar-footer">
@@ -551,6 +552,29 @@ textarea{resize:vertical;min-height:72px}
           <tbody id="scoring-tbody"></tbody>
         </table></div>
         <div id="scoring-empty" class="empty" style="display:none"><div class="empty-icon">🎯</div><p>Nenhuma regra definida</p></div>
+      </div>
+    </div>
+
+    <!-- INSTAGRAM -->
+    <div class="page" id="page-instagram">
+      <div class="sec-header">
+        <div class="sec-title">📸 Instagram Leads</div>
+        <button class="btn btn-primary" onclick="openModal('modal-ig-extrair')">+ Extrair Leads</button>
+      </div>
+      <div id="ig-stats" style="display:flex;gap:12px;margin-bottom:16px"></div>
+      <div id="ig-filter-tabs" style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-xs btn-outline ig-tab active" onclick="setIgFilter('todos',this)">Todos</button>
+        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('pendente',this)">Não contatados</button>
+        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('contatado',this)">Contatados</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Perfil</th><th>Bio</th><th>Seguidores</th><th>Contato</th><th>Status</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="ig-leads-tbody"></tbody>
+        </table></div>
+        <div id="ig-empty" class="empty" style="display:none"><div class="empty-icon">📸</div><p>Nenhum lead encontrado.</p></div>
       </div>
     </div>
 
@@ -937,6 +961,24 @@ textarea{resize:vertical;min-height:72px}
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-ig-extrair" style="display:none" onclick="closeOuter(event,'modal-ig-extrair')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">📸 Extrair Leads do Instagram</div>
+    <div class="form-group">
+      <label>Palavra-chave</label>
+      <input type="text" id="ig-keyword" class="form-control" placeholder="ex: salão de beleza">
+    </div>
+    <div class="form-group">
+      <label>Limite (máx 50)</label>
+      <input type="number" id="ig-limite" value="20" min="1" max="50">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-ig-extrair')">Cancelar</button>
+      <button class="btn btn-primary" onclick="iniciarExtracaoInstagram(this)">Extrair</button>
+    </div>
+  </div>
+</div>
+
 <div id="toasts"></div>
 
 <script>
@@ -1178,7 +1220,7 @@ function startStuckWatcher() {
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
-var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',scoring:'Scoring de Leads',config:'Configurações'};
+var titles = {dashboard:'Dashboard',campanhas:'Campanhas',leads:'Leads',respostas:'Respostas',kanban:'Kanban',analytics:'Analytics',fila:'Fila de Envios',templates:'Templates',whatsapp:'WhatsApp',blacklist:'Blacklist',scoring:'Scoring de Leads',instagram:'Instagram Leads',config:'Configurações'};
 
 // ── Page cache: stores last rendered data so switching tabs is instant ────────
 var pageCache = {};
@@ -1201,6 +1243,7 @@ function navLoad(page) {
   if (page==='whatsapp') { if (stale) loadWAInstances(); }
   if (page==='blacklist') { if (stale) loadBlacklist(); }
   if (page==='scoring') { if (stale) loadScoring(); }
+  if (page==='instagram') { if (stale) loadInstagramLeads(); }
   if (page==='config') { if (stale) loadConfig(); }
 }
 
@@ -2795,6 +2838,119 @@ if (TOKEN) {
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-wrap').style.display='flex';
   init();
+}
+
+// ── INSTAGRAM LEADS ───────────────────────────────────────────────────────────
+var igCurrentFilter = 'todos';
+
+async function loadInstagramLeads(filter) {
+  filter = filter || igCurrentFilter;
+  igCurrentFilter = filter;
+  const params = new URLSearchParams({ limit: 100, offset: 0 });
+  if (filter !== 'todos') params.set('status', filter);
+
+  try {
+    const res = await fetch('/api/instagram/leads?' + params, { headers: { Authorization: 'Bearer ' + TOKEN } });
+    const data = await res.json();
+    const leads = data.leads || [];
+
+    const total = leads.length;
+    const contacted = leads.filter(function(l) { return l.instagram_contacted; }).length;
+    const pending = total - contacted;
+    document.getElementById('ig-stats').innerHTML =
+      '<div class="badge badge-novo">Total: <b>' + total + '</b></div>' +
+      '<div class="badge badge-pronta">Contatados: <b>' + contacted + '</b></div>' +
+      '<div class="badge badge-pendente">Pendentes: <b>' + pending + '</b></div>';
+
+    var tbody = document.getElementById('ig-leads-tbody');
+    var empty = document.getElementById('ig-empty');
+
+    if (leads.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = leads.map(function(l) {
+      var bio = l.bio ? (l.bio.length > 80 ? l.bio.slice(0, 80) + '…' : l.bio) : '';
+      var followers = l.followers_count ? (l.followers_count >= 1000 ? (l.followers_count / 1000).toFixed(1) + 'K' : l.followers_count) : '-';
+      var contact = [l.telefone, l.email].filter(Boolean).join(' / ') || '-';
+      var statusBadge = l.instagram_contacted
+        ? '<span class="badge badge-pronta">Contatado</span>'
+        : '<span class="badge badge-pendente">Pendente</span>';
+      var username = l.instagram_username || (l.instagram_url ? l.instagram_url.replace(/.*instagram\.com\//, '').replace(/\/$/, '') : '');
+      var profileLink = l.instagram_url
+        ? '<a href="' + l.instagram_url + '" target="_blank">@' + username + '</a>'
+        : '@' + username;
+
+      return '<tr>' +
+        '<td>' + profileLink + '<br><small>' + (l.nome || '') + '</small></td>' +
+        '<td><small>' + bio + '</small></td>' +
+        '<td>' + followers + '</td>' +
+        '<td><small>' + contact + '</small></td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td class="td-actions">' +
+          (!l.instagram_contacted ? '<button class="btn btn-xs btn-outline" onclick="marcarContatadoIg(' + l.id + ',this)">Contatar</button>' : '') +
+          '<button class="btn btn-xs btn-danger" onclick="arquivarIgLead(' + l.id + ',this)">🗑</button>' +
+        '</td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) {
+    console.error('Error loading instagram leads:', e);
+  }
+}
+
+function setIgFilter(filter, btn) {
+  document.querySelectorAll('.ig-tab').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadInstagramLeads(filter);
+}
+
+async function iniciarExtracaoInstagram(btn) {
+  var keyword = document.getElementById('ig-keyword').value.trim();
+  var limite = parseInt(document.getElementById('ig-limite').value) || 20;
+  if (!keyword) { alert('Digite uma palavra-chave'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Extraindo...';
+
+  try {
+    var res = await fetch('/api/instagram/extrair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
+      body: JSON.stringify({ palavra_chave: keyword, limite: limite })
+    });
+    var data = await res.json();
+    if (data.ok) {
+      closeModal('modal-ig-extrair');
+      var livePanel = document.getElementById('modal-prospeccao-live');
+      if (livePanel) livePanel.style.display = '';
+    }
+  } catch(e) {
+    alert('Erro ao iniciar extração');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Extrair';
+  }
+}
+
+async function marcarContatadoIg(id, btn) {
+  btn.disabled = true;
+  await fetch('/api/instagram/leads/' + id + '/contatar', {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer ' + TOKEN }
+  });
+  loadInstagramLeads();
+}
+
+async function arquivarIgLead(id, btn) {
+  if (!confirm('Arquivar este lead?')) return;
+  await fetch('/api/instagram/leads/' + id, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + TOKEN }
+  });
+  loadInstagramLeads();
 }
 </script>
 </body>
