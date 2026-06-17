@@ -103,7 +103,7 @@ async function scrapeInstagram(palavraChave, limit = 20) {
           }
         });
         return [...links];
-      }, skip);
+      }, skipList);
     }
 
     let profileLinks = await searchGoogle(0);
