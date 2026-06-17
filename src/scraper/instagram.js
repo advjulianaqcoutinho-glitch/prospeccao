@@ -62,10 +62,25 @@ async function scrapeInstagram(palavraChave, limit = 20) {
     async function searchBing(startPage) {
       const query = encodeURIComponent(`site:instagram.com "${palavraChave}"`);
       const url = `https://www.bing.com/search?q=${query}&count=30&setlang=pt-BR&first=${startPage}`;
+      console.log(`[instagram] Buscando: ${url}`);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await sleep(1500);
+      await sleep(2000);
+
+      // Log page title to detect captcha/block
+      const title = await page.title();
+      console.log(`[instagram] Página: "${title}"`);
+
       return page.evaluate((skip) => {
         const links = new Set();
+        // Bing wraps result links — check cite elements and data-url attributes too
+        document.querySelectorAll('cite, [data-url], h2 a, .b_algo a').forEach((el) => {
+          const text = el.getAttribute('data-url') || el.getAttribute('href') || el.textContent || '';
+          const match = text.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)/);
+          if (match && !skip.includes(match[1]) && match[1].length > 1) {
+            links.add('https://www.instagram.com/' + match[1] + '/');
+          }
+        });
+        // Also check all hrefs directly
         document.querySelectorAll('a[href]').forEach((a) => {
           const match = (a.href || '').match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/);
           if (match && !skip.includes(match[1]) && match[1].length > 1) {
