@@ -227,7 +227,6 @@ textarea{resize:vertical;min-height:72px}
     <div class="nav-item" onclick="nav('fila',this)"><span class="nav-icon">⏳</span>Fila de Envios</div>
     <div class="nav-item" onclick="nav('templates',this)"><span class="nav-icon">📝</span>Templates</div>
     <div class="nav-item" onclick="nav('whatsapp',this)"><span class="nav-icon">📱</span>WhatsApp</div>
-    <div class="nav-item" onclick="nav('instagram',this)"><span class="nav-icon">📸</span>Instagram</div>
     <div class="nav-item" onclick="nav('blacklist',this)"><span class="nav-icon">⛔</span>Blacklist</div>
     <div class="nav-item" onclick="nav('scoring',this)"><span class="nav-icon">🎯</span>Scoring</div>
     <div class="nav-item" onclick="nav('instagram',this)"><span class="nav-icon">📸</span>Instagram</div>
@@ -399,36 +398,6 @@ textarea{resize:vertical;min-height:72px}
         <button class="btn btn-primary" onclick="openModal('modal-wa-inst')">＋ Nova Instância</button>
       </div>
       <div id="wa-instances-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
-    </div>
-
-    <!-- INSTAGRAM -->
-    <div class="page" id="page-instagram">
-      <div class="sec-header">
-        <div class="sec-title">📸 Instagram Leads</div>
-        <button class="btn btn-primary" onclick="openModal('modal-ig-extrair')" style="background:#e1306c;border-color:#e1306c">+ Extrair Leads</button>
-      </div>
-      <!-- Stats -->
-      <div id="ig-stats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"></div>
-      <!-- Filter tabs -->
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button class="btn btn-xs ig-tab" style="background:rgba(225,48,108,.2);color:#e1306c;border:1px solid rgba(225,48,108,.4)" onclick="setIgFilter('todos',this)">Todos</button>
-        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('pendente',this)">Não contatados</button>
-        <button class="btn btn-xs btn-outline ig-tab" onclick="setIgFilter('contatado',this)">✅ Contatados</button>
-      </div>
-      <div class="card" style="padding:0;overflow:hidden">
-        <table class="table">
-          <thead><tr>
-            <th>Perfil</th>
-            <th>Bio</th>
-            <th>Seguidores</th>
-            <th>Contato</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr></thead>
-          <tbody id="ig-leads-tbody"></tbody>
-        </table>
-        <div id="ig-empty" class="empty" style="display:none"><div class="empty-icon">📸</div><p>Nenhum lead Instagram ainda.<br>Clique em "+ Extrair Leads" para começar.</p></div>
-      </div>
     </div>
 
     <!-- BLACKLIST -->
@@ -871,33 +840,6 @@ textarea{resize:vertical;min-height:72px}
         <button class="btn btn-danger btn-sm" style="width:100%;justify-content:center" onclick="document.getElementById('arq-confirmar-wrap').style.display='block';this.style.display='none';document.getElementById('btn-excluir-perm').style.display='flex';document.getElementById('btn-excluir-perm').disabled=true">🗑 Excluir tudo permanentemente...</button>
       </div>
       <button id="btn-excluir-perm" class="btn btn-danger" style="display:none;justify-content:center" disabled onclick="confirmarExcluirPermanente()">🗑 Confirmar exclusão permanente</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL INSTAGRAM -->
-<div class="modal-overlay" id="modal-instagram" style="display:none" onclick="closeOuter(event,'modal-instagram')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-title">📸 Extrair Leads do Instagram</div>
-    <div style="font-size:12px;color:var(--text-m);margin-bottom:14px;background:rgba(225,48,108,.08);padding:8px 12px;border-radius:8px;border:1px solid rgba(225,48,108,.2)">
-      🔍 Busca perfis públicos via Google (<code>site:instagram.com</code>) — sem login no Instagram.
-    </div>
-    <input type="hidden" id="ig-campanha-id">
-    <div class="form-group">
-      <label>Palavra-chave</label>
-      <input id="ig-palavra" placeholder="Ex: móveis planejados">
-    </div>
-    <div class="form-group">
-      <label>Cidade</label>
-      <input id="ig-cidade" placeholder="Ex: Curitiba">
-    </div>
-    <div class="form-group">
-      <label>Quantidade máxima de perfis</label>
-      <input type="number" id="ig-limite" value="20" min="5" max="50">
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('modal-instagram')">Cancelar</button>
-      <button class="btn btn-primary" onclick="iniciarInstagram(this)" style="background:#e1306c;border-color:#e1306c">📸 Iniciar Extração</button>
     </div>
   </div>
 </div>
@@ -2941,29 +2883,18 @@ function setIgFilter(filter, btn) {
 async function iniciarExtracaoInstagram(btn) {
   var keyword = document.getElementById('ig-keyword').value.trim();
   var limite = parseInt(document.getElementById('ig-limite').value) || 20;
-  if (!keyword) { alert('Digite uma palavra-chave'); return; }
-
-  btn.disabled = true;
-  btn.textContent = 'Extraindo...';
-
+  if (!keyword) { toast('Digite uma palavra-chave','error'); return; }
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
   try {
-    var res = await fetch('/api/instagram/extrair', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
-      body: JSON.stringify({ palavra_chave: keyword, limite: limite })
-    });
-    var data = await res.json();
-    if (data.ok) {
-      closeModal('modal-ig-extrair');
-      var livePanel = document.getElementById('modal-prospeccao-live');
-      if (livePanel) livePanel.style.display = '';
-    }
-  } catch(e) {
-    alert('Erro ao iniciar extração');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Extrair';
-  }
+    closeModal('modal-ig-extrair');
+    initLiveModal({ nome: 'Instagram — ' + keyword, nicho: keyword, cidade: '' }, 0);
+    openModal('modal-prospeccao-live');
+    startStuckWatcher();
+    var r = await api('POST', '/instagram/extrair', { palavra_chave: keyword, limite });
+    toast('Extração Instagram iniciada!', 'success');
+    setTimeout(function(){ loadInstagramLeads(); }, 5000);
+  } catch(e) { toast('Erro: '+e.message,'error'); closeModal('modal-prospeccao-live'); }
+  btn.disabled=false; btn.innerHTML='Extrair';
 }
 
 async function marcarContatadoIg(id, btn) {
