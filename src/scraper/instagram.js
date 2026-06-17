@@ -59,42 +59,57 @@ async function scrapeInstagram(palavraChave, limit = 20) {
     await page.setViewport({ width: 1280, height: 900 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9' });
 
-    async function searchBing(startPage) {
-      const query = encodeURIComponent(`site:instagram.com "${palavraChave}"`);
-      const url = `https://www.bing.com/search?q=${query}&count=30&setlang=pt-BR&first=${startPage}`;
+    async function searchGoogle(start) {
+      // Use Google without site: operator — search for instagram.com in text
+      const query = encodeURIComponent(`instagram.com "${palavraChave}"`);
+      const url = `https://www.google.com/search?q=${query}&num=30&hl=pt-BR&start=${start}`;
       console.log(`[instagram] Buscando: ${url}`);
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await sleep(2000);
 
-      // Log page title to detect captcha/block
+      // Accept cookies if prompted
+      try {
+        const btn = await page.$('button[id="L2AGLb"], form[action*="consent"] button');
+        if (btn) { await btn.click(); await sleep(1000); }
+      } catch (_) {}
+
       const title = await page.title();
       console.log(`[instagram] Página: "${title}"`);
 
       return page.evaluate((skip) => {
         const links = new Set();
-        // Bing wraps result links — check cite elements and data-url attributes too
-        document.querySelectorAll('cite, [data-url], h2 a, .b_algo a').forEach((el) => {
-          const text = el.getAttribute('data-url') || el.getAttribute('href') || el.textContent || '';
-          const match = text.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)/);
+        // Extract from cite elements (show URL in results)
+        document.querySelectorAll('cite').forEach((el) => {
+          const text = el.textContent || '';
+          const match = text.match(/instagram\.com\/([a-zA-Z0-9._]+)/);
           if (match && !skip.includes(match[1]) && match[1].length > 1) {
             links.add('https://www.instagram.com/' + match[1] + '/');
           }
         });
-        // Also check all hrefs directly
+        // Extract from actual hrefs
         document.querySelectorAll('a[href]').forEach((a) => {
-          const match = (a.href || '').match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/);
+          const href = a.href || '';
+          const match = href.match(/https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?(?:\?.*)?$/);
+          if (match && !skip.includes(match[1]) && match[1].length > 1) {
+            links.add('https://www.instagram.com/' + match[1] + '/');
+          }
+        });
+        // Extract from data-url and similar attributes
+        document.querySelectorAll('[data-url],[data-href]').forEach((el) => {
+          const text = el.getAttribute('data-url') || el.getAttribute('data-href') || '';
+          const match = text.match(/instagram\.com\/([a-zA-Z0-9._]+)/);
           if (match && !skip.includes(match[1]) && match[1].length > 1) {
             links.add('https://www.instagram.com/' + match[1] + '/');
           }
         });
         return [...links];
-      }, skipList);
+      }, skip);
     }
 
-    let profileLinks = await searchBing(1);
+    let profileLinks = await searchGoogle(0);
     if (profileLinks.length < limit) {
       try {
-        const more = await searchBing(31);
+        const more = await searchGoogle(30);
         more.forEach((l) => { if (!profileLinks.includes(l)) profileLinks.push(l); });
       } catch (_) {}
     }
