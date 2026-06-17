@@ -53,7 +53,7 @@ router.post('/extrair', async (req, res) => {
   } else {
     const { data: created, error: createErr } = await supabase
       .from('campanhas')
-      .insert({ nome: 'Instagram Leads', status: 'ativo', criado_em: new Date().toISOString() })
+      .insert({ nome: 'Instagram Leads', nicho: palavra_chave, cidade: 'Instagram', status: 'pronta', criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
       .select('id')
       .single();
     if (createErr) return res.status(500).json({ error: createErr.message });
